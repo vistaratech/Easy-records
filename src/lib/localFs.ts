@@ -67,6 +67,27 @@ async function extractFilesFromDirectory(
               return `${dd}-${mm}-${yyyy}`;
             }
 
+            let metadata: any[] = [];
+            const metaSheetName = wb.SheetNames.find(n => n.toLowerCase() === '_metadata_');
+            if (metaSheetName) metadata = XLSX.utils.sheet_to_json(wb.Sheets[metaSheetName]);
+
+            // Find Header Row (skip decorative headings/date lines)
+            let headerRowIdx = 0;
+            if (metadata && metadata.length > 0) {
+              const metaNames = metadata.map(m => String(m['Column Name']).toLowerCase().trim());
+              const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: '' }) as any[][];
+              let maxMatches = -1;
+              for (let i = 0; i < Math.min(aoa.length, 20); i++) {
+                const row = aoa[i];
+                if (!Array.isArray(row)) continue;
+                const matches = row.filter(cell => cell && metaNames.includes(String(cell).toLowerCase().trim())).length;
+                if (matches > maxMatches && matches > 0) {
+                  maxMatches = matches;
+                  headerRowIdx = i;
+                }
+              }
+            }
+
             // Pre-process worksheet: extract URLs from HYPERLINK formulas and convert date serials
             const refForPreprocess = ws['!ref'];
             if (refForPreprocess) {
@@ -130,27 +151,6 @@ async function extractFilesFromDirectory(
                       cell.t = 's';
                     }
                   }
-                }
-              }
-            }
-
-            let metadata: any[] = [];
-            const metaSheetName = wb.SheetNames.find(n => n.toLowerCase() === '_metadata_');
-            if (metaSheetName) metadata = XLSX.utils.sheet_to_json(wb.Sheets[metaSheetName]);
-
-            // Find Header Row (skip decorative headings/date lines)
-            let headerRowIdx = 0;
-            if (metadata && metadata.length > 0) {
-              const metaNames = metadata.map(m => String(m['Column Name']).toLowerCase().trim());
-              const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: '' }) as any[][];
-              let maxMatches = -1;
-              for (let i = 0; i < Math.min(aoa.length, 20); i++) {
-                const row = aoa[i];
-                if (!Array.isArray(row)) continue;
-                const matches = row.filter(cell => cell && metaNames.includes(String(cell).toLowerCase().trim())).length;
-                if (matches > maxMatches && matches > 0) {
-                  maxMatches = matches;
-                  headerRowIdx = i;
                 }
               }
             }
