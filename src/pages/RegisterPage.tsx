@@ -2167,8 +2167,6 @@ export default function RegisterPage() {
           : [...old.entries, finalEntry];
         return { ...old, entries: updatedEntries, entryCount: updatedEntries.length };
       });
-      // Close the Add Record modal on success
-      setShowAddRecordModal(false);
       _logWork('add_row', `Added new row #${newEntry.rowNumber}`);
     },
     onError: (err: any, _vars, context) => {
@@ -4327,7 +4325,17 @@ export default function RegisterPage() {
         onClose={() => setShowAddRecordModal(false)}
         columns={columns}
         isSubmitting={addEntryMutation.isPending}
-        onSubmit={(cells) => addEntryMutation.mutate(cells)}
+        onSubmit={(cells, onSuccessCallback) => {
+          addEntryMutation.mutate(cells, {
+            onSuccess: () => {
+              if (onSuccessCallback) {
+                onSuccessCallback();
+              } else {
+                setShowAddRecordModal(false);
+              }
+            }
+          });
+        }}
         existingEntries={localEntries}
       />
 

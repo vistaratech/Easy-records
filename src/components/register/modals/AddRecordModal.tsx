@@ -24,7 +24,7 @@ interface Entry {
 interface AddRecordModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (cells: Record<string, string>) => void;
+  onSubmit: (cells: Record<string, string>, onSuccess?: () => void) => void;
   columns: Column[];
   isSubmitting?: boolean;
   existingEntries?: Entry[];
@@ -39,6 +39,7 @@ export function AddRecordModal({
   const [values, setValues] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<Set<string>>(new Set());
   const [uploadingImageCol, setUploadingImageCol] = useState<string | null>(null);
+  const [submitType, setSubmitType] = useState<'save' | 'save_and_add' | null>(null);
   const firstInputRef = useRef<HTMLElement | null>(null);
   // Track which (colId:value) combinations we've already toasted — prevents spam
   const toastedRef = useRef<Set<string>>(new Set());
@@ -55,6 +56,7 @@ export function AddRecordModal({
       setValues(init);
       setDuplicates(new Set());
       toastedRef.current = new Set();
+      setSubmitType(null);
       setTimeout(() => {
         if (firstInputRef.current) firstInputRef.current.focus();
       }, 50);
@@ -155,12 +157,14 @@ export function AddRecordModal({
       if (col.mandatory && col.type !== 'formula' && col.type !== 'auto_increment') {
         if (!val || val.trim() === '') {
           toast.error(`${col.name} is a mandatory field.`);
+          setSubmitType(null);
           return;
         }
       }
       
       if (col.unique && duplicates.has(colIdStr)) {
         toast.error(`Cannot save. ${col.name} must be unique, and "${val}" already exists.`);
+        setSubmitType(null);
         return;
       }
     }
@@ -179,7 +183,28 @@ export function AddRecordModal({
         cells[k] = finalVal;
       }
     });
-    onSubmit(cells);
+
+    if (submitType === 'save_and_add') {
+      onSubmit(cells, () => {
+        // Clear/reset values for next record
+        const init: Record<string, string> = {};
+        columns.forEach(col => {
+          if (col.type !== 'formula') {
+            init[col.id.toString()] = '';
+          }
+        });
+        setValues(init);
+        setDuplicates(new Set());
+        toastedRef.current = new Set();
+        setSubmitType(null);
+        toast.success('Record saved. Ready for next entry!');
+        setTimeout(() => {
+          if (firstInputRef.current) firstInputRef.current.focus();
+        }, 50);
+      });
+    } else {
+      onSubmit(cells);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -490,16 +515,39 @@ export function AddRecordModal({
           </div>
 
           {/* Footer */}
-          <div className="row-detail-footer">
+          <div className="row-detail-footer" style={{ gap: '10px' }}>
             <button type="button" className="row-detail-btn-close" onClick={onClose}>
               Cancel
             </button>
             <button
               type="submit"
+              onClick={() => setSubmitType('save_and_add')}
+              className="row-detail-btn-save-another"
+              disabled={isSubmitting || allCols.length === 0 || Array.from(duplicates).some(id => columns.find(c => c.id.toString() === id)?.unique)}
+              style={{
+                padding: '8px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#fff',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                boxShadow: '0 2px 4px rgba(16, 185, 129, 0.15)'
+              }}
+              onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
+              onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+            >
+              {isSubmitting && submitType === 'save_and_add' ? 'Saving…' : 'Save & Add Another'}
+            </button>
+            <button
+              type="submit"
+              onClick={() => setSubmitType('save')}
               className={`row-detail-btn-save${hasDuplicates ? ' add-record-submit--warn' : ''}`}
               disabled={isSubmitting || allCols.length === 0 || Array.from(duplicates).some(id => columns.find(c => c.id.toString() === id)?.unique)}
             >
-              {isSubmitting ? 'Saving…' : (hasDuplicates && !Array.from(duplicates).some(id => columns.find(c => c.id.toString() === id)?.unique)) ? 'Save Anyway' : 'Save Record'}
+              {isSubmitting && submitType === 'save' ? 'Saving…' : (hasDuplicates && !Array.from(duplicates).some(id => columns.find(c => c.id.toString() === id)?.unique)) ? 'Save Anyway' : 'Save Record'}
             </button>
           </div>
         </form>
