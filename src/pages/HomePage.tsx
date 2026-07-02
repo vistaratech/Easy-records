@@ -259,13 +259,33 @@ export default function HomePage() {
                   // Convert Excel date serial numbers to formatted date strings
                   if (cell.t === 'n' && typeof cell.v === 'number') {
                     const fmt = cell.z;
+
+                    let shouldConvert = false;
                     if (fmt && isDateFormat(fmt)) {
-                      if (cell.w && !/^\d+(\.\d+)?$/.test(cell.w)) {
-                        cell.v = cell.w;
-                      } else {
-                        cell.v = excelSerialToDateStr(cell.v);
-                        cell.w = cell.v;
+                      shouldConvert = true;
+                    } else if (!fmt || fmt === 'General') {
+                      // Heuristic: if format info is missing (common with Google Sheets exports),
+                      // check if the column header contains date-related keywords and the value
+                      // falls within a plausible Excel date serial range (1 to 73050 ≈ 1900–2099)
+                      const headerCell = ws[XLSX.utils.encode_cell({ r: headerRowIdx, c: C })];
+                      if (headerCell) {
+                        const headerText = String(headerCell.v).toLowerCase().trim();
+                        const dateKeywords = ['date', 'doa', 'dob', 'doj', 'dol', 'doe',
+                          'admission date', 'joining date', 'birth date',
+                          'start date', 'end date', 'created', 'updated',
+                          'expiry', 'valid'];
+                        const looksLikeDate = dateKeywords.some(kw =>
+                          headerText === kw || headerText.includes(kw)
+                        );
+                        if (looksLikeDate && cell.v > 0 && cell.v < 73050) {
+                          shouldConvert = true;
+                        }
                       }
+                    }
+
+                    if (shouldConvert) {
+                      cell.v = excelSerialToDateStr(cell.v);
+                      cell.w = cell.v;
                       cell.t = 's';
                     }
                   }

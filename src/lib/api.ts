@@ -1027,6 +1027,9 @@ export const importExcelData = async (
         // Use unified date formatter for consistency across import, display, and storage
         if (col.type === 'date') {
           val = formatDateToDDMMYYYY(val);
+        } else {
+          // Strip leading currency symbols if followed by a digit (works for number, currency, and text columns)
+          val = String(val).replace(/^([₹$]\s*|Rs\.?\s*|INR\s*)(?=\d)/i, '').trim();
         }
         cells[col.id.toString()] = String(val);
       }

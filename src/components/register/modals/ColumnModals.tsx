@@ -8,6 +8,84 @@ import { evaluateFormula, getRegister, linkColumn, listSavedFormulas, createSave
 import type { RegisterSummary, Column as ApiColumn, Folder, SavedFormula, SavedDropdown } from '../../../lib/api';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 
+// ── Saved Formula Column Remapping Helpers ──
+function normalizeColName(name: string): string {
+  return name
+    .replace(/[₹$(),\[\]{}]/g, '')
+    .replace(/_/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map(w => w.toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join(' ');
+}
+
+function findBestColumnMatch(
+  templateName: string,
+  currentColumns: { id: number; name: string }[],
+  excludeId?: number | null
+): string | null {
+  const available = currentColumns.filter(c => excludeId == null || c.id !== excludeId);
+
+  // 1. Exact match
+  const exact = available.find(c => c.name === templateName);
+  if (exact) return exact.name;
+
+  // 2. Case-insensitive match
+  const ciMatch = available.find(c => c.name.toLowerCase() === templateName.toLowerCase());
+  if (ciMatch) return ciMatch.name;
+
+  // 3. Normalized word-set match (handles "I PAY (₹)" ↔ "PAY I")
+  const normalizedTemplate = normalizeColName(templateName);
+  if (normalizedTemplate) {
+    const wordSetMatch = available.find(c => normalizeColName(c.name) === normalizedTemplate);
+    if (wordSetMatch) return wordSetMatch.name;
+  }
+
+  return null;
+}
+
+function remapSavedFormula(
+  formula: string,
+  currentColumns: { id: number; name: string }[],
+  excludeId?: number | null
+): {
+  remappedFormula: string;
+  unmatchedNames: string[];
+  mapping: Record<string, string>;
+  allMatched: boolean;
+} {
+  const matches = Array.from(formula.matchAll(/\{([^}]+)\}/g));
+  const templateNames = [...new Set(matches.map(m => m[1]))];
+
+  const mapping: Record<string, string> = {};
+  const unmatchedNames: string[] = [];
+
+  for (const tName of templateNames) {
+    const match = findBestColumnMatch(tName, currentColumns, excludeId);
+    if (match) {
+      mapping[tName] = match;
+    } else {
+      unmatchedNames.push(tName);
+      mapping[tName] = '';
+    }
+  }
+
+  let remappedFormula = formula;
+  for (const [oldName, newName] of Object.entries(mapping)) {
+    if (newName && oldName !== newName) {
+      const regex = new RegExp(
+        '\\{' + oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\}',
+        'gi'
+      );
+      remappedFormula = remappedFormula.replace(regex, `{${newName}}`);
+    }
+  }
+
+  return { remappedFormula, unmatchedNames, mapping, allMatched: unmatchedNames.length === 0 };
+}
+
 function FormulaBuilder({ formula, onChange, columns, entries, outputName, excludeId, businessId }: { formula: string, onChange: (v: string) => void, columns: any[], entries?: any[], outputName?: string, excludeId?: number | null, businessId?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'preset' | 'custom'>('preset');
@@ -17,6 +95,12 @@ function FormulaBuilder({ formula, onChange, columns, entries, outputName, exclu
   const [saveTemplateName, setSaveTemplateName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedList, setShowSavedList] = useState(false);
+  const [remapState, setRemapState] = useState<{
+    savedFormula: SavedFormula;
+    unmatchedNames: string[];
+    dismissedNames: string[];
+    mapping: Record<string, string>;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: savedFormulas = [], isLoading: loadingSaved } = useQuery({
@@ -267,9 +351,20 @@ function FormulaBuilder({ formula, onChange, columns, entries, outputName, exclu
                     onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-light)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     onClick={() => {
-                      onChange(sf.formula);
-                      setShowSavedList(false);
-                      setMode('custom');
+                      const result = remapSavedFormula(sf.formula, columns, excludeId);
+                      if (result.allMatched) {
+                        onChange(result.remappedFormula);
+                        setShowSavedList(false);
+                        setMode('custom');
+                      } else {
+                        setRemapState({
+                          savedFormula: sf,
+                          unmatchedNames: result.unmatchedNames,
+                          dismissedNames: [],
+                          mapping: result.mapping,
+                        });
+                        setShowSavedList(false);
+                      }
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -302,6 +397,183 @@ function FormulaBuilder({ formula, onChange, columns, entries, outputName, exclu
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {/* ── Column Remapping UI ── */}
+          {remapState && (
+            <div style={{
+              marginTop: '8px', padding: '14px',
+              border: '2px solid #f59e0b', borderRadius: '10px',
+              background: '#fffbeb',
+              boxShadow: '0 4px 12px rgba(245,158,11,0.12)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <AlertTriangle size={16} color="#f59e0b" />
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--navy)' }}>
+                  Column Mapping Required
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px', lineHeight: 1.4 }}>
+                Some columns in "<strong>{remapState.savedFormula.name}</strong>" don't match this register. Map or dismiss (✕) them:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                {remapState.unmatchedNames.filter(n => !remapState.dismissedNames.includes(n)).map(name => (
+                  <div key={name} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 10px', background: 'white', borderRadius: '8px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <span style={{
+                      fontSize: '12px', fontWeight: 600, color: '#dc2626',
+                      fontFamily: 'monospace', minWidth: '100px', flexShrink: 0,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }}>
+                      {`{${name}}`}
+                    </span>
+                    <span style={{ fontSize: '14px', color: 'var(--muted)', flexShrink: 0 }}>→</span>
+                    <select
+                      style={{
+                        flex: 1, padding: '6px 8px', fontSize: '12px',
+                        borderRadius: '6px', border: '1px solid var(--border)',
+                        background: 'white', color: 'var(--text-main)',
+                        cursor: 'pointer', minWidth: 0
+                      }}
+                      value={remapState.mapping[name] || ''}
+                      onChange={(e) => {
+                        setRemapState(prev => {
+                          if (!prev) return null;
+                          return {
+                            ...prev,
+                            mapping: { ...prev.mapping, [name]: e.target.value }
+                          };
+                        });
+                      }}
+                    >
+                      <option value="">— Select column —</option>
+                      {columns.filter(c => c.id !== excludeId).map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      title={`Remove {${name}} from formula`}
+                      onClick={() => {
+                        setRemapState(prev => {
+                          if (!prev) return null;
+                          return {
+                            ...prev,
+                            dismissedNames: [...prev.dismissedNames, name]
+                          };
+                        });
+                      }}
+                      style={{
+                        padding: '4px', background: 'none', border: 'none',
+                        cursor: 'pointer', color: 'var(--muted)', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '4px', transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.background = '#fef2f2'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'none'; }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                {remapState.dismissedNames.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', padding: '4px 0' }}>
+                    <span>Removed:</span>
+                    {remapState.dismissedNames.map(name => (
+                      <span
+                        key={name}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          fontSize: '11px', color: 'var(--muted)', background: 'var(--bg-light)',
+                          padding: '2px 8px', borderRadius: '12px', textDecoration: 'line-through',
+                          fontFamily: 'monospace', cursor: 'pointer', transition: 'all 0.15s'
+                        }}
+                        title="Click to restore"
+                        onClick={() => {
+                          setRemapState(prev => {
+                            if (!prev) return null;
+                            return {
+                              ...prev,
+                              dismissedNames: prev.dismissedNames.filter(n => n !== name)
+                            };
+                          });
+                        }}
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {(() => {
+                  const activeUnmatched = remapState.unmatchedNames.filter(n => !remapState.dismissedNames.includes(n));
+                  const canApply = activeUnmatched.every(n => remapState.mapping[n]);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let finalFormula = remapState.savedFormula.formula;
+                        // Apply column mappings
+                        for (const [oldName, newName] of Object.entries(remapState.mapping)) {
+                          if (newName) {
+                            const regex = new RegExp(
+                              '\\{' + oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\}',
+                              'gi'
+                            );
+                            finalFormula = finalFormula.replace(regex, `{${newName}}`);
+                          }
+                        }
+                        // Strip dismissed columns and clean up adjacent operators
+                        for (const dismissed of remapState.dismissedNames) {
+                          const escaped = dismissed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                          // Remove with preceding operator: " - {name}", " + {name}", etc.
+                          finalFormula = finalFormula.replace(new RegExp('\\s*[+\\-*/]\\s*\\{' + escaped + '\\}', 'gi'), '');
+                          // Remove with following operator (if first term): "{name} - ", "{name} + "
+                          finalFormula = finalFormula.replace(new RegExp('\\{' + escaped + '\\}\\s*[+\\-*/]\\s*', 'gi'), '');
+                          // If still present (only term), just remove it
+                          finalFormula = finalFormula.replace(new RegExp('\\{' + escaped + '\\}', 'gi'), '');
+                        }
+                        finalFormula = finalFormula.trim();
+                        onChange(finalFormula);
+                        setRemapState(null);
+                        setMode('custom');
+                      }}
+                      disabled={!canApply}
+                      style={{
+                        flex: 1, padding: '8px', fontSize: '12px', fontWeight: 700,
+                        borderRadius: '8px', border: 'none',
+                        background: canApply ? 'var(--navy)' : 'var(--bg-light)',
+                        color: canApply ? 'white' : 'var(--muted)',
+                        cursor: canApply ? 'pointer' : 'not-allowed',
+                        transition: 'all 0.2s',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <Check size={14} />
+                      Apply Mapped Formula
+                    </button>
+                  );
+                })()}
+                <button
+                  type="button"
+                  onClick={() => setRemapState(null)}
+                  style={{
+                    padding: '8px 16px', fontSize: '12px', fontWeight: 600,
+                    borderRadius: '8px', border: '1px solid var(--border)',
+                    background: 'white', color: 'var(--muted)',
+                    cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>

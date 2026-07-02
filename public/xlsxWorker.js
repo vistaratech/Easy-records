@@ -130,20 +130,40 @@ self.onmessage = function (evt) {
 
           // Convert Excel date serial numbers to formatted date strings
           if (cell.t === 'n' && typeof cell.v === 'number') {
-            // Check the cell's number format for date patterns
             var fmt = cell.z;
-            // Also check the built-in format table if cell.z is not set
-            if (!fmt && XLSX.SSF && XLSX.SSF._table && cell.z !== undefined) {
-              fmt = XLSX.SSF._table[cell.z];
-            }
-            if (fmt && isDateFormat(fmt)) {
-              // Prefer the pre-formatted value from Excel if available
-              if (cell.w && !/^\d+(\.\d+)?$/.test(cell.w)) {
-                cell.v = cell.w;
-              } else {
-                cell.v = excelSerialToDateStr(cell.v);
-                cell.w = cell.v;
+            // Look up format from built-in SSF table if cell.z is a numeric format ID
+            if (!fmt && XLSX.SSF && XLSX.SSF._table) {
+              if (typeof cell.z === 'number') {
+                fmt = XLSX.SSF._table[cell.z];
               }
+            }
+
+            var shouldConvert = false;
+            if (fmt && isDateFormat(fmt)) {
+              shouldConvert = true;
+            } else if (!fmt || fmt === 'General') {
+              // Heuristic: if format info is missing (common with Google Sheets exports),
+              // check if the column header contains date-related keywords and the value
+              // falls within a plausible Excel date serial range (1 to 73050 ≈ 1900–2099)
+              var headerCell = ws[XLSX.utils.encode_cell({ r: headerRowIdx, c: C })];
+              if (headerCell) {
+                var headerText = String(headerCell.v).toLowerCase().trim();
+                var dateKeywords = ['date', 'doa', 'dob', 'doj', 'dol', 'doe',
+                  'admission date', 'joining date', 'birth date',
+                  'start date', 'end date', 'created', 'updated',
+                  'expiry', 'valid'];
+                var looksLikeDate = dateKeywords.some(function(kw) {
+                  return headerText === kw || headerText.indexOf(kw) !== -1;
+                });
+                if (looksLikeDate && cell.v > 0 && cell.v < 73050) {
+                  shouldConvert = true;
+                }
+              }
+            }
+
+            if (shouldConvert) {
+              cell.v = excelSerialToDateStr(cell.v);
+              cell.w = cell.v;
               cell.t = 's'; // Mark as string so raw:true uses the formatted value
             }
           }

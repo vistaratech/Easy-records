@@ -1,5 +1,5 @@
 import { useCallback, memo, useState, useEffect, useRef, startTransition, useDeferredValue, useMemo } from 'react';
-import { Menu, Search, Plus, FileText, X, Folder, FolderOpen, FileSpreadsheet, ClipboardPaste, Pencil, Trash2, PlusCircle, FolderPlus, Bell, User, Activity, LayoutTemplate, LogOut, CloudUpload, Clock, CheckCircle2, HelpCircle, XCircle, Shield, Sparkles, PenLine, ChevronDown, ChevronRight, ArrowLeft, Check, Loader2, Play, Pause, ChevronLeft, Sun, Moon, Monitor, BookMarked, Database } from 'lucide-react';
+import { Menu, Search, Plus, FileText, X, Folder, FolderOpen, FileSpreadsheet, ClipboardPaste, Pencil, Trash2, PlusCircle, FolderPlus, Bell, User, Activity, LayoutTemplate, LogOut, CloudUpload, Clock, CheckCircle2, HelpCircle, XCircle, Shield, Sparkles, PenLine, ChevronDown, ChevronRight, ArrowLeft, Check, Loader2, Play, Pause, ChevronLeft, Sun, Moon, Monitor, BookMarked, Database, RefreshCw, Maximize2, Download } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
@@ -127,14 +127,14 @@ export const Sidebar = memo(function Sidebar({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showVersionModal, setShowVersionModal] = useState(() => {
     try {
-      return localStorage.getItem('seen_version_1.8.8') !== 'true';
+      return localStorage.getItem('seen_version_1.9.5') !== 'true';
     } catch {
       return false;
     }
   });
-  const [versionTab, setVersionTab] = useState<'1.8.8' | '1.8.7' | '1.8.5' | '1.8.2' | '1.8.1' | '1.8.0' | '1.7.9' | '1.7.7' | '1.7.6' | '1.7.5' | '1.7.1' | '1.7.0' | '1.6.10' | '1.6.9' | '1.6.3' | '1.6.2' | '1.6.1' | '1.6.0' | '1.5.6' | '1.5.5' | '1.5.2' | '1.5.1' | '1.5' | '1.3.1' | '1.2'>('1.8.8');
+  const [versionTab, setVersionTab] = useState<'1.9.5' | '1.8.8' | '1.8.7' | '1.8.5' | '1.8.2' | '1.8.1' | '1.8.0' | '1.7.9' | '1.7.7' | '1.7.6' | '1.7.5' | '1.7.1' | '1.7.0' | '1.6.10' | '1.6.9' | '1.6.3' | '1.6.2' | '1.6.1' | '1.6.0' | '1.5.6' | '1.5.5' | '1.5.2' | '1.5.1' | '1.5' | '1.3.1' | '1.2'>('1.9.5');
   const [showOlderVersionsDropdown, setShowOlderVersionsDropdown] = useState(false);
-
+  
   // Slideshow state
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -142,15 +142,15 @@ export const Sidebar = memo(function Sidebar({
   const handleCloseVersionModal = useCallback(() => {
     setShowVersionModal(false);
     try {
-      localStorage.setItem('seen_version_1.8.8', 'true');
+      localStorage.setItem('seen_version_1.9.5', 'true');
     } catch (e) {
       console.error(e);
     }
   }, []);
 
   useEffect(() => {
-    if (versionTab !== '1.8.8' && versionTab !== '1.7.7' || !showVersionModal || !isPlaying) return;
-    const slideCount = versionTab === '1.8.8' ? 3 : 5;
+    if (versionTab !== '1.9.5' && versionTab !== '1.8.8' && versionTab !== '1.7.7' || !showVersionModal || !isPlaying) return;
+    const slideCount = versionTab === '1.9.5' ? 10 : (versionTab === '1.8.8' ? 3 : 5);
     const interval = setInterval(() => {
       setActiveSlide(prev => (prev + 1) % slideCount);
     }, 4500);
@@ -895,7 +895,7 @@ export const Sidebar = memo(function Sidebar({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setVersionTab('1.8.8');
+                    setVersionTab('1.9.5');
                     setActiveSlide(0); // Reset slideshow to first slide
                     setShowVersionModal(true);
                   }}
@@ -905,9 +905,9 @@ export const Sidebar = memo(function Sidebar({
                   onMouseLeave={e => {
                     e.currentTarget.style.backgroundColor = 'var(--brand-blue-light)';
                   }}
-                  title="View what's new in v1.8.8"
+                  title="View what's new in v1.9.5"
                 >
-                  v1.8.8
+                  v1.9.5
                 </span>
               </div>
             </div>
@@ -1781,11 +1781,11 @@ export const Sidebar = memo(function Sidebar({
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxWidth: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '850px' : '500px',
+              maxWidth: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '850px' : '500px',
               width: '100%',
               borderRadius: '20px',
-              padding: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '24px',
-              background: (versionTab === '1.8.8' || versionTab === '1.7.7') ? 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)' : '#ffffff',
+              padding: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '24px',
+              background: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)' : '#ffffff',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
               overflow: 'hidden',
               transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1798,10 +1798,10 @@ export const Sidebar = memo(function Sidebar({
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '16px',
+              marginBottom: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '16px',
               borderBottom: '1px solid #f1f5f9',
-              padding: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '16px 24px' : '0 0 12px 0',
-              background: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '#f8fafc' : 'transparent'
+              padding: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '16px 24px' : '0 0 12px 0',
+              background: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '#f8fafc' : 'transparent'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ background: '#eff6ff', color: '#3b82f6', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1827,8 +1827,8 @@ export const Sidebar = memo(function Sidebar({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '20px',
-              padding: (versionTab === '1.8.8' || versionTab === '1.7.7') ? '12px 24px' : '12px 0',
+              marginBottom: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '0' : '20px',
+              padding: (versionTab === '1.9.5' || versionTab === '1.8.8' || versionTab === '1.7.7') ? '12px 24px' : '12px 0',
               background: versionTab === '1.7.7' ? '#f8fafc' : 'transparent',
               borderBottom: versionTab === '1.7.7' ? '1px solid #e2e8f0' : 'none',
               position: 'relative'
@@ -1883,7 +1883,7 @@ export const Sidebar = memo(function Sidebar({
                       padding: '4px'
                     }}>
                       {[
-                        '1.8.8', '1.8.7', '1.8.5', '1.8.2', '1.8.1', '1.8.0', '1.7.9', '1.7.7', '1.7.6', '1.7.5', 
+                        '1.9.5', '1.8.8', '1.8.7', '1.8.5', '1.8.2', '1.8.1', '1.8.0', '1.7.9', '1.7.7', '1.7.6', '1.7.5', 
                         '1.7.1', '1.7.0', '1.6.10', '1.6.9', '1.6.3', '1.6.2', '1.6.1', 
                         '1.6.0', '1.5.6', '1.5.5', '1.5.2', '1.5.1', '1.5', '1.3.1', '1.2'
                       ].map(v => (
@@ -1914,7 +1914,7 @@ export const Sidebar = memo(function Sidebar({
                             if (versionTab !== v) e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          {v === '1.8.8' ? 'v1.8.8 (Current)' : `v${v}`}
+                          {v === '1.9.5' ? 'v1.9.5 (Current)' : `v${v}`}
                         </button>
                       ))}
                     </div>
@@ -1923,7 +1923,344 @@ export const Sidebar = memo(function Sidebar({
               </div>
             </div>
 
-            {versionTab === '1.8.8' ? (
+            {versionTab === '1.9.5' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '440px', position: 'relative', overflow: 'hidden' }}>
+                <style>{`
+                  @keyframes slideInUp {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                  }
+                  @keyframes slideInLeft {
+                    from { transform: translateX(-24px); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                  }
+                  @keyframes slideInRight {
+                    from { transform: translateX(24px); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                  }
+                  @keyframes gentlePulse {
+                    0%, 100% { transform: scale(1); }
+                    50% { transform: scale(1.04); }
+                  }
+                  @keyframes borderGlowBlue {
+                    0%, 100% { border-color: rgba(37, 99, 235, 0.1); }
+                    50% { border-color: rgba(37, 99, 235, 0.4); }
+                  }
+                  @keyframes spinSlow {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                  }
+                  .animate-slide-left {
+                    animation: slideInLeft 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                  }
+                  .animate-slide-right {
+                    animation: slideInRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                  }
+                  .progress-bar-fill {
+                    height: 100%;
+                    background: linear-gradient(90deg, #3b82f6, #10b981);
+                  .progress-bar-fill {
+                    height: 100%;
+                    background: linear-gradient(90deg, #3b82f6, #10b981);
+                    width: 0%;
+                    border-radius: 2px;
+                  }
+                  .progress-bar-fill-playing {
+                    width: 100%;
+                    transition: width 4.5s linear;
+                  }
+                `}</style>
+
+                {/* Main Slides Content */}
+                <div style={{ flex: 1, position: 'relative' }}>
+                  {activeSlide === 0 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <Sparkles size={12} style={{ animation: 'spinSlow 6s linear infinite' }} />
+                          <span>v1.9.5 • Change 1 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          1. Metrics & Stats Cards
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          A redesigned metrics panel showing real-time stats for Employees, Workspace Sheets (Registers), Audit logs, approvals, and Recycle Bin items.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ padding: '20px 24px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', width: '100%', maxWidth: '200px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>Registers</div>
+                          <div style={{ fontSize: '32px', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>123</div>
+                          <div style={{ fontSize: '11px', color: 'var(--brand-green)', fontWeight: 600 }}>Active Workspace Sheets</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 1 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 2 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          2. Live Connection Status
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Admins can monitor the status of the database connections at any time with a green glowing live link indicator badge.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#10b981', fontWeight: 700, background: 'white', padding: '8px 16px', borderRadius: '99px', border: '1px solid rgba(16, 185, 129, 0.25)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                          <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 8px #10b981' }} />
+                          Live Database Connected
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 2 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 3 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          3. Dashboard Sync Engine
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          A manual dashboard sync button pulls all recent user activity logs, requests, and metrics instantly without loading the full app again.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <button style={{ padding: '10px 20px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                          <RefreshCw size={14} /> Sync Dashboard
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 3 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 4 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          4. Workspace Registers Directory
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          An expandable registers directory panel integrated directly in the Admin Overview allows searching and drilling down into any sheet.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', padding: '12px' }}>
+                          <div style={{ display: 'flex', gap: '8px', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '8px' }}>
+                            <Search size={12} style={{ color: 'var(--muted)' }} />
+                            <div style={{ fontSize: '10px', color: 'var(--muted)' }}>Search registers...</div>
+                          </div>
+                          <div style={{ fontSize: '10.5px', padding: '6px', background: 'rgba(99,102,241,0.06)', color: '#6366f1', borderRadius: '6px', fontWeight: 600 }}>📁 AHS ADMISSIONS 25-26</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 4 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 5 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          5. Detailed Sheet Previews
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Clicking any register opens a detailed portal overlay. Admins can view columns, values, pagination, and navigate pages in fullscreen mode.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                          <div style={{ background: 'var(--navy)', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '9px', fontWeight: 700, color: 'white' }}>AHS 25-26 Detail</span>
+                            <Maximize2 size={10} color="white" />
+                          </div>
+                          <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '9px', color: 'var(--muted)' }}>
+                            <div># I BILL • T MODE • 📅 DATE</div>
+                            <div style={{ height: '1px', background: '#cbd5e1' }} />
+                            <div>10000 • AKE • 10-05-2025</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 5 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 6 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          6. Advanced Multi-Column Filters
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Slice and analyze data with filters using specific operators (like contains, greater than, date before) across multiple columns simultaneously.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', padding: '12px' }}>
+                          <div style={{ fontSize: '9px', fontWeight: 700, color: '#4f46e5', background: 'rgba(99,102,241,0.08)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                            Filter: I BILL &gt; 10000
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 6 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 7 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          7. Excel Export for Filtered Views
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Admins can export custom filtered data views directly to Excel format to download and share only relevant subsets of data.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <button style={{ padding: '10px 20px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'white', boxShadow: '0 4px 12px rgba(16,185,129,0.25)' }}>
+                          <Download size={14} /> Export 12 Rows
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 7 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 8 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          8. Saved Custom Templates
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Save custom register structures as templates directly to your dashboard. Recreate them in one click or delete them anytime using the card level trash button.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', padding: '12px', position: 'relative' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', marginBottom: '8px' }}>★</div>
+                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-main)' }}>Custom Template A</div>
+                          <div style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '2px' }}>12 columns</div>
+                          <Trash2 size={12} color="#EF4444" style={{ position: 'absolute', top: '12px', right: '12px' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 8 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 9 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          9. Formula Remapping on Rename
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Renaming column fields automatically prompts dependency check remapping to map formulas, preventing broken formula calculations.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', padding: '12px' }}>
+                          <div style={{ fontSize: '9px', color: 'var(--muted)' }}>{"Remap: {OLD} → {NEW}"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSlide === 9 && (
+                    <div style={{ display: 'flex', height: '100%', animation: 'fadeIn 0.4s ease-out' }}>
+                      <div style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} className="animate-slide-left">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, width: 'fit-content', marginBottom: '14px' }}>
+                          <span>v1.9.5 • Change 10 of 10</span>
+                        </div>
+                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', lineHeight: 1.2 }}>
+                          10. Clean Imports Sanitization
+                        </h2>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+                          Date formatting conversions bypass US format shifts (keeping April 11th correct) and leading currency symbols (like ₹) are auto-stripped on imports.
+                        </p>
+                      </div>
+                      <div style={{ width: '48%', background: 'linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', position: 'relative' }} className="animate-slide-right">
+                        <div style={{ width: '100%', maxWidth: '220px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.05)', padding: '12px', fontSize: '10.5px' }}>
+                          <div style={{ color: '#94a3b8' }}>₹ 10500x → <strong style={{ color: '#15803d' }}>10500x</strong></div>
+                          <div style={{ color: '#94a3b8' }}>45758 → <strong style={{ color: '#15803d' }}>11-04-2025</strong></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Slideshow Progress Bar */}
+                <div style={{ height: '3px', width: '100%', background: '#e2e8f0', position: 'relative' }}>
+                  <div
+                    key={activeSlide}
+                    className={`progress-bar-fill ${isPlaying ? 'progress-bar-fill-playing' : ''}`}
+                  />
+                </div>
+
+                {/* Footer Controls */}
+                <div style={{ height: '56px', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', background: '#f8fafc' }}>
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+                      fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    {isPlaying ? (
+                      <><Pause size={12} /> Pause Auto-play</>
+                    ) : (
+                      <><Play size={12} /> Play Slideshow</>
+                    )}
+                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {Array.from({ length: 10 }).map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => { setActiveSlide(idx); setIsPlaying(false); }}
+                        style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: activeSlide === idx ? 'var(--brand-blue)' : '#cbd5e1',
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={handleCloseVersionModal}
+                    style={{
+                      padding: '8px 20px', background: 'var(--navy)', color: 'white',
+                      border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                      cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.15)'}
+                    onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                  >
+                    Get Started
+                  </button>
+                </div>
+              </div>
+            ) : versionTab === '1.8.8' ? (
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '440px', position: 'relative', overflow: 'hidden' }}>
                 <style>{`
                   @keyframes slideInUp {

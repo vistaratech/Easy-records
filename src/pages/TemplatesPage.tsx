@@ -7,7 +7,7 @@ import {
   ArrowLeft, FileText, Hash, Calendar, ChevronDown, FlaskConical, Type,
   Building, GraduationCap, Store, Bus, Warehouse, Package, CalendarIcon, HeartPulse,
   Utensils, Dumbbell, Building2, User, ShieldCheck, Leaf, Plane,
-  Phone, Mail, Globe, Star, CheckSquare, Image, Plus
+  Phone, Mail, Globe, Star, CheckSquare, Image, Plus, Bookmark, Trash2
 } from 'lucide-react';
 import { useEffect } from 'react';
 
@@ -37,12 +37,20 @@ function getColTypeIcon(type: string) {
   }
 }
 
+interface SavedTemplate {
+  id: string;
+  name: string;
+  columns: Array<{ name: string; type: string; dropdownOptions?: string[]; formula?: string }>;
+  createdAt: string;
+}
+
 export default function TemplatesPage() {
   const { categoryId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryId || null);
   const [creatingTemplate, setCreatingTemplate] = useState<string | null>(null);
+  const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
 
   const { data: businesses } = useQuery({ queryKey: ['businesses'], queryFn: listBusinesses });
   const businessId = businesses?.[0]?.id;
@@ -53,14 +61,31 @@ export default function TemplatesPage() {
     }
   }, [businesses, queryClient]);
 
+  useEffect(() => {
+    try {
+      const loaded = JSON.parse(localStorage.getItem('rb_saved_templates') || '[]');
+      setSavedTemplates(loaded);
+    } catch (e) {
+      console.error('Failed to load saved templates', e);
+    }
+  }, []);
+
   const createMutation = useMutation({
-    mutationFn: (tpl: Template) => {
-      const cat = CATEGORIES.find((c) => c.id === selectedCategory);
+    mutationFn: (tpl: { name: string; columns: any[]; icon: string; iconColor?: string; category?: string }) => {
       // Capture businessId at call time so onSuccess closure is never stale
       return createRegister({
-        businessId: businessId!, name: tpl.name, icon: tpl.icon,
-        iconColor: cat?.color, category: cat?.name || 'general', template: tpl.name,
-        columns: tpl.columns.map((c) => ({ name: c.name, type: c.type, dropdownOptions: c.dropdownOptions, formula: c.formula })),
+        businessId: businessId!,
+        name: tpl.name,
+        icon: tpl.icon,
+        iconColor: tpl.iconColor || '#10B981',
+        category: tpl.category || 'general',
+        template: tpl.name,
+        columns: tpl.columns.map((c) => ({
+          name: c.name,
+          type: c.type,
+          dropdownOptions: c.dropdownOptions,
+          formula: c.formula
+        })),
       });
     },
     onSuccess: (newReg) => {
@@ -104,36 +129,93 @@ export default function TemplatesPage() {
 
       {/* Category Grid */}
       <div className="templates-page-body">
-        <h2 className="templates-heading">Select a Category</h2>
+        <h2 className="templates-heading">Select a Template</h2>
         <p className="templates-subheading">
-          Pick a business type to see ready-made templates
+          Choose a blank register or use one of your custom templates.
         </p>
         <div className="categories-grid categories-grid--no-pad">
-          {CATEGORIES.map((cat) => (
-            <CategoryCard 
-              key={cat.id} cat={cat} 
-              icon={ICON_MAP[cat.icon] || FileText} 
-              count={cat.id === 'blank' ? 0 : (TEMPLATES[cat.id] || []).length} 
+          {/* Blank Register */}
+          <CategoryCard 
+            key="blank"
+            cat={{ id: 'blank', icon: 'plus', name: 'Blank Register' }} 
+            icon={Plus} 
+            count={0} 
+            onClick={() => {
+              if (!businessId || creatingTemplate) return;
+              setCreatingTemplate('Blank Register');
+              createMutation.mutate({
+                name: 'Blank Register',
+                columns: DEFAULT_BLANK_COLUMNS,
+                icon: 'file',
+                iconColor: '#10B981',
+                category: 'general'
+              });
+            }} 
+          />
+
+          {/* User-saved Custom Templates */}
+          {savedTemplates.map((tpl) => (
+            <div 
+              key={tpl.id} 
+              className="category-card" 
+              style={{ position: 'relative', cursor: 'pointer' }}
               onClick={() => {
-                if (cat.id === 'blank') {
-                  if (!businessId) return;
-                  setCreatingTemplate('Blank Register');
-                  createMutation.mutate({
-                    name: 'Blank Register',
-                    columns: DEFAULT_BLANK_COLUMNS,
-                    icon: 'file',
-                    description: 'Start from scratch'
-                  });
-                } else {
-                  setSelectedCategory(cat.id);
-                }
-              }} 
-            />
+                if (!businessId || creatingTemplate) return;
+                setCreatingTemplate(tpl.name);
+                createMutation.mutate({
+                  name: tpl.name,
+                  columns: tpl.columns,
+                  icon: 'file',
+                  iconColor: '#6366F1',
+                  category: 'custom_template'
+                });
+              }}
+            >
+              {/* Trash button to delete template */}
+              <button 
+                className="delete-template-btn" 
+                title="Delete template"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Are you sure you want to delete the template "${tpl.name}"?`)) {
+                    const updated = savedTemplates.filter(t => t.id !== tpl.id);
+                    localStorage.setItem('rb_saved_templates', JSON.stringify(updated));
+                    setSavedTemplates(updated);
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 2,
+                  transition: 'color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+              >
+                <Trash2 size={16} />
+              </button>
+
+              <div className="category-icon" style={{ backgroundColor: '#6366F1' }}>
+                <Bookmark size={24} color="#FFF" />
+              </div>
+              <div className="category-name">{tpl.name}</div>
+              <div className="category-count">{tpl.columns.length} columns</div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Template selection modal */}
+      {/* Template selection modal (kept for compatibility, though not normally reachable now) */}
       <TemplateModal 
         selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
         categoryData={categoryData} subTemplates={subTemplates}
