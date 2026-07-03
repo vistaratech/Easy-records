@@ -46,11 +46,10 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo-wrap">
-          <img src="/logo-transparent.png" alt="AG Trust Logo" className="login-logo-img" />
-          <span className="login-logo-badge">Trusted Partner</span>
+          <img src="/customer-logo.png" alt="Easy Records Logo" className="login-logo-img" />
         </div>
 
-        <h1 className="login-title">AG Trust</h1>
+        <h1 className="login-title">Easy Records</h1>
         <p className="login-sub">Sign in to your account</p>
 
         {error && <div className="login-error">{error}</div>}

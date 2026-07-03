@@ -58,7 +58,7 @@ export default function AdminDashboard() {
           {sidebarOpen ? <X size={22}/> : <Menu size={22}/>}
         </button>
         <h1 style={{margin:0,fontSize:'16px',fontWeight:800,color:'white',display:'flex',alignItems:'center',gap:'8px'}}>
-          <img src="/logo-transparent.png" alt="AG Trust" style={{ width: '18px', height: '18px', objectFit: 'contain' }} /> AG Admin
+          <img src="/customer-logo.png" alt="Easy Records" style={{ width: '18px', height: '18px', objectFit: 'contain' }} /> Easy Admin
         </h1>
         <div style={{width:'30px'}}/>
       </div>
@@ -80,9 +80,9 @@ export default function AdminDashboard() {
         <div style={{padding:'24px 20px',borderBottom:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:'12px'}}>
           <h1 style={{margin:0,fontSize:'19px',color:'var(--navy)',fontWeight:800,display:'flex',alignItems:'center',gap:'10px',letterSpacing:'-0.025em'}}>
             <div style={{background:'rgba(26,115,232,0.1)',padding:'6px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <img src="/logo-transparent.png" alt="AG Trust" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+              <img src="/customer-logo.png" alt="Easy Records" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
             </div>
-            AG Admin
+            Easy Admin
           </h1>
           
           <div style={{display:'flex',alignItems:'center',gap:'10px',marginTop:'6px',background:'var(--bg-secondary)',padding:'10px',borderRadius:'12px',border:'1px solid var(--border)'}}>
