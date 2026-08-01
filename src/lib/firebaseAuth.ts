@@ -166,7 +166,10 @@ export async function firebaseChangePassword(token: string, currentPassword: str
 }
 
 export async function firebaseGetUsers() {
-  const res = await fetch(apiUrl('/api/auth/users'));
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl('/api/auth/users'), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch users');
@@ -177,9 +180,10 @@ export async function firebaseGetUsers() {
 export async function firebaseCreateUser(data: {
   name: string; email: string; password: string; role?: string; phone?: string;
 }) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl('/api/auth/users'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -190,9 +194,10 @@ export async function firebaseCreateUser(data: {
 }
 
 export async function firebaseUpdateUser(id: string, data: Record<string, unknown>) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/auth/users/${id}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -203,9 +208,10 @@ export async function firebaseUpdateUser(id: string, data: Record<string, unknow
 }
 
 export async function firebaseUpdatePermissions(id: string, permissions: Record<string, unknown>) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/auth/users/${id}/permissions`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ permissions })
   });
   if (!res.ok) {
@@ -216,9 +222,10 @@ export async function firebaseUpdatePermissions(id: string, permissions: Record<
 }
 
 export async function firebaseAdminChangePassword(id: string, newPassword: string) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/auth/users/${id}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ password: newPassword })
   });
   if (!res.ok) {
@@ -229,8 +236,10 @@ export async function firebaseAdminChangePassword(id: string, newPassword: strin
 }
 
 export async function firebaseDeleteUser(id: string) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/auth/users/${id}`), {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
   });
   if (!res.ok) {
     const err = await res.json();
@@ -240,9 +249,10 @@ export async function firebaseDeleteUser(id: string) {
 }
 
 export async function firebaseUpdateUserStatus(id: string, status: 'active' | 'inactive') {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/auth/users/${id}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ status })
   });
   if (!res.ok) {
@@ -260,9 +270,11 @@ export async function logActivity(
   registerId?: string | number,
   registerName?: string
 ) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl('/api/activity'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    // userId/userName still sent for backward compat; server ignores them for non-admins and uses token
     body: JSON.stringify({ userId, userName, action, details, registerId, registerName })
   });
   if (!res.ok) {
@@ -283,7 +295,10 @@ export function firebaseLogWorkspaceAction(
 }
 
 export async function firebaseGetActivity(limitCount = 200) {
-  const res = await fetch(apiUrl(`/api/activity?limit=${limitCount}`));
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl(`/api/activity?limit=${limitCount}`), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch activity');
@@ -292,7 +307,10 @@ export async function firebaseGetActivity(limitCount = 200) {
 }
 
 export async function firebaseGetUserActivity(userId: string) {
-  const res = await fetch(apiUrl(`/api/activity/user/${userId}`));
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl(`/api/activity/user/${userId}`), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch user activity');
@@ -317,8 +335,12 @@ export async function firebaseCreateRequest(
   return res.json();
 }
 
-export async function firebaseGetMyDownloadRequests(userId: string) {
-  const res = await fetch(apiUrl(`/api/requests/my?userId=${userId}`));
+export async function firebaseGetMyDownloadRequests(_userId: string) {
+  // SECURITY: userId param removed — server derives the user from the auth token
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl('/api/requests/my'), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch my requests');
@@ -327,7 +349,10 @@ export async function firebaseGetMyDownloadRequests(userId: string) {
 }
 
 export async function firebaseGetAllDownloadRequests() {
-  const res = await fetch(apiUrl('/api/requests/all'));
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl('/api/requests/all'), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch all requests');
@@ -336,7 +361,10 @@ export async function firebaseGetAllDownloadRequests() {
 }
 
 export async function firebaseGetPendingDownloadRequests() {
-  const res = await fetch(apiUrl('/api/requests/pending'));
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl('/api/requests/pending'), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch pending requests');
@@ -378,8 +406,12 @@ export async function firebaseCreateNotification(
   return res.json();
 }
 
-export async function firebaseGetMyNotifications(userId: string) {
-  const res = await fetch(apiUrl(`/api/notifications?userId=${userId}`));
+export async function firebaseGetMyNotifications(_userId: string) {
+  // SECURITY: userId param removed — server derives the user from the auth token
+  const token = sessionStorage.getItem('recordbook_token') || '';
+  const res = await fetch(apiUrl('/api/notifications'), {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to fetch notifications');
@@ -388,8 +420,10 @@ export async function firebaseGetMyNotifications(userId: string) {
 }
 
 export async function firebaseMarkNotificationRead(notifId: string) {
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl(`/api/notifications/${notifId}/read`), {
-    method: 'PUT'
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}` }
   });
   if (!res.ok) {
     const err = await res.json();
@@ -397,11 +431,13 @@ export async function firebaseMarkNotificationRead(notifId: string) {
   }
 }
 
-export async function firebaseMarkAllNotificationsRead(userId: string) {
+export async function firebaseMarkAllNotificationsRead(_userId: string) {
+  // SECURITY: userId body removed — server derives the user from the auth token
+  const token = sessionStorage.getItem('recordbook_token') || '';
   const res = await fetch(apiUrl('/api/notifications/read-all'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId })
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({})
   });
   if (!res.ok) {
     const err = await res.json();

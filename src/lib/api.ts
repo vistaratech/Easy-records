@@ -442,7 +442,9 @@ async function getRegDoc(registerId: number): Promise<RegisterDetail> {
   if (!fetchPromise) {
     fetchPromise = (async () => {
       try {
-        const res = await fetch(apiUrl(`/api/registers/${registerId}`));
+        const res = await fetch(apiUrl(`/api/registers/${registerId}`), {
+          headers: { ...authHeaders() }
+        });
         if (!res.ok) throw new Error('Register not found');
         const data = await res.json();
         firestoreRegisterCache.set(registerId, data);
@@ -463,7 +465,7 @@ async function saveRegDocImmediate(reg: RegisterDetail, includeEntries = false):
   const payload = includeEntries ? reg : { ...reg, entries: undefined };
   const res = await fetch(apiUrl(`/api/registers/${reg.id}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(payload)
   });
   if (!res.ok) throw new Error('Failed to save register metadata');
@@ -512,13 +514,17 @@ export async function listRegisters(businessId: number): Promise<RegisterSummary
 }
 
 export async function listDeletedRegisters(businessId: number): Promise<RegisterSummary[]> {
-  const res = await fetch(apiUrl(`/api/registers/deleted?businessId=${businessId}`));
+  const res = await fetch(apiUrl(`/api/registers/deleted?businessId=${businessId}`), {
+    headers: { ...authHeaders() }
+  });
   if (!res.ok) throw new Error('Failed to list deleted registers');
   return res.json();
 }
 
 export async function getRegisterColumnsOnly(registerId: number): Promise<RegisterDetail> {
-  const res = await fetch(apiUrl(`/api/registers/${registerId}/columns`));
+  const res = await fetch(apiUrl(`/api/registers/${registerId}/columns`), {
+    headers: { ...authHeaders() }
+  });
   if (!res.ok) throw new Error('Failed to fetch columns');
   return res.json();
 }
@@ -606,7 +612,7 @@ export async function deleteRegister(registerId: number): Promise<void> {
   
   const res = await fetch(apiUrl(`/api/registers/${registerId}`), {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
       deletedBy: savedUser?.name || 'User',
       deletedByEmail: savedUser?.email || '',
@@ -622,7 +628,8 @@ export async function deleteRegister(registerId: number): Promise<void> {
 export async function permanentlyDeleteRegister(registerId: number): Promise<void> {
   const reg = await getRegDoc(registerId);
   const res = await fetch(apiUrl(`/api/registers/${registerId}/hard`), {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: { ...authHeaders() }
   });
   if (!res.ok) throw new Error('Failed to permanently delete register');
   
@@ -633,7 +640,8 @@ export async function permanentlyDeleteRegister(registerId: number): Promise<voi
 export async function restoreRegister(registerId: number): Promise<void> {
   const reg = await getRegDoc(registerId);
   const res = await fetch(apiUrl(`/api/registers/${registerId}/restore`), {
-    method: 'POST'
+    method: 'POST',
+    headers: { ...authHeaders() }
   });
   if (!res.ok) throw new Error('Failed to restore register');
   
@@ -3179,10 +3187,11 @@ export async function saveDashboardConfig(businessId: number, configuredSumMetri
 export async function extendUserTrial(userId: string | number, newTrialEndsAt?: string, extensionDays?: number): Promise<User> {
   const res = await fetch(apiUrl(`/api/auth/users/${userId}/extend-trial`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ newTrialEndsAt, extensionDays })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to extend trial');
   return data.user;
 }
+
