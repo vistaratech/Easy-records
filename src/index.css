@@ -10854,9 +10854,11 @@ button:active, .interactive-btn:active, .category-card:active, .register-card:ac
 .alive-card {
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
-.alive-card:hover {
-  transform: translateY(-4px) !important;
-  box-shadow: 0 12px 28px -6px rgba(0, 45, 93, 0.14), 0 4px 12px rgba(0,0,0,0.04) !important;
+/* Dynamic Table Zooming */
+.register-table-scroll,
+.spreadsheet-container,
+.register-grid-container {
+  zoom: var(--table-zoom, 1);
 }
 
 

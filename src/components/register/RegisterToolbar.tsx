@@ -1,5 +1,5 @@
-import { Search, Filter, Trash2, Hash, FileText, Eye, Columns } from 'lucide-react';
-import { memo } from 'react';
+import { Search, Filter, Trash2, Hash, FileText, Eye, Columns, Minus, Plus, Maximize2, Minimize2 } from 'lucide-react';
+import { memo, useState } from 'react';
 import type { Column } from '../../lib/api';
 import { FilterModal, type FilterRule } from './modals/FilterModal';
 
@@ -57,6 +57,33 @@ export const RegisterToolbar = memo(function RegisterToolbar({
 }: RegisterToolbarProps) {
 
   const isSyncing = isSaving || uploadingImagesCount > 0 || pendingDebounceCount > 0 || pendingTempRowEditsCount > 0;
+
+  // Zoom & Fullscreen state
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const handleZoomChange = (delta: number) => {
+    setZoomLevel(prev => {
+      const next = Math.max(70, Math.min(180, prev + delta));
+      document.documentElement.style.setProperty('--table-zoom', `${next / 100}`);
+      return next;
+    });
+  };
+
+  const handleResetZoom = () => {
+    setZoomLevel(100);
+    document.documentElement.style.setProperty('--table-zoom', '1');
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      }
+    }
+  };
 
   return (
     <div className="pages-actions-right">
@@ -189,6 +216,94 @@ export const RegisterToolbar = memo(function RegisterToolbar({
           columns={columns}
           entries={entries}
         />
+      </div>
+
+      {/* Spreadsheet Table Zoom & Fullscreen Control Widget */}
+      <div 
+        className="zoom-toolbar-widget"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '2px',
+          background: 'var(--bg-secondary, #f1f5f9)',
+          borderRadius: '8px',
+          padding: '2px 5px',
+          border: '1px solid #cbd5e1',
+          margin: '0 4px'
+        }}
+      >
+        <button
+          onClick={() => handleZoomChange(-10)}
+          title="Zoom Out (decrease table size)"
+          style={{
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: '4px',
+            color: '#475569',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+          className="interactive-btn"
+        >
+          <Minus size={12} strokeWidth={2.5} />
+        </button>
+
+        <span
+          onClick={handleResetZoom}
+          title="Click to reset zoom to 100%"
+          style={{
+            fontSize: '11px',
+            fontWeight: 800,
+            color: '#0f172a',
+            cursor: 'pointer',
+            padding: '0 4px',
+            minWidth: '34px',
+            textAlign: 'center',
+            userSelect: 'none'
+          }}
+        >
+          {zoomLevel}%
+        </span>
+
+        <button
+          onClick={() => handleZoomChange(10)}
+          title="Zoom In (increase table size)"
+          style={{
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: '4px',
+            color: '#475569',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+          className="interactive-btn"
+        >
+          <Plus size={12} strokeWidth={2.5} />
+        </button>
+
+        <div style={{ width: '1px', height: '12px', background: '#cbd5e1', margin: '0 2px' }} />
+
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit Fullscreen" : "Fullscreen View"}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: '4px',
+            color: isFullscreen ? '#1d4ed8' : '#475569',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+          className="interactive-btn"
+        >
+          {isFullscreen ? <Minimize2 size={12} strokeWidth={2} /> : <Maximize2 size={12} strokeWidth={2} />}
+        </button>
       </div>
 
       <div className="pab-divider" />
