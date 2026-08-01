@@ -151,57 +151,54 @@ export function DashboardContent({ filtered, excelMutation, handleFileUpload, on
   return (
     <div className="content-area alive-fade-up">
       <div className="registers-content">
-        {/* Dynamic Alive Welcome Banner */}
+        {/* Sleek Compact Alive Welcome Banner */}
         <div style={{
           background: 'linear-gradient(135deg, #002d5d 0%, #0a3d73 60%, #1e5ba8 100%)',
-          borderRadius: '16px',
-          padding: '20px 24px',
-          marginBottom: '24px',
+          borderRadius: '12px',
+          padding: '12px 18px',
+          marginBottom: '16px',
           color: '#ffffff',
-          boxShadow: '0 8px 24px rgba(0, 45, 93, 0.18)',
+          boxShadow: '0 4px 14px rgba(0, 45, 93, 0.14)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '16px',
+          gap: '12px',
           position: 'relative',
           overflow: 'hidden'
         }}>
           <div style={{ position: 'relative', zIndex: 2 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{renderGreeting()}</span>
-              <span className="alive-pulse-dot" title="Workspace connected & active" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{renderGreeting()}</span>
+              <span className="alive-pulse-dot" style={{ width: '7px', height: '7px' }} title="Workspace connected & active" />
             </div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ margin: 0, fontSize: '16px', fontWeight: 800, letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>Welcome back, {user?.name || 'Workspace Admin'}!</span>
-              <Sparkles size={20} color="#fbbf24" />
+              <Sparkles size={16} color="#fbbf24" />
             </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', opacity: 0.85 }}>
-              Manage your business registers, log quick entries, or export reports in one click.
-            </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative', zIndex: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', zIndex: 2 }}>
             <button
               onClick={() => navigate('/templates')}
               style={{
-                padding: '9px 16px',
-                borderRadius: '10px',
+                padding: '7px 13px',
+                borderRadius: '8px',
                 border: 'none',
                 background: '#ffffff',
                 color: '#002d5d',
                 fontWeight: 800,
-                fontSize: '13px',
+                fontSize: '12.5px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                gap: '5px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
                 transition: 'all 0.2s ease'
               }}
               className="interactive-btn"
             >
-              <Plus size={16} strokeWidth={2.5} />
+              <Plus size={14} strokeWidth={2.5} />
               <span>New Register</span>
             </button>
           </div>
