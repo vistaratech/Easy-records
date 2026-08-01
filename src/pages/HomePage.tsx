@@ -143,8 +143,17 @@ export default function HomePage() {
 
   const { data: registers } = useQuery({
     queryKey: ['registers', businessId],
-    queryFn: () => listRegisters(businessId!),
-    enabled: !!businessId,
+    queryFn: async () => {
+      if (!businesses || businesses.length === 0) return [];
+      const allRegs = await Promise.all(
+        businesses.map(b => listRegisters(b.id).catch(() => []))
+      );
+      const flat = allRegs.flat();
+      const map = new Map<number, import('../lib/api').RegisterSummary>();
+      flat.forEach(r => map.set(r.id, r));
+      return Array.from(map.values());
+    },
+    enabled: !!businesses && businesses.length > 0,
     staleTime: 0,
     refetchOnWindowFocus: false,
   });

@@ -606,8 +606,16 @@ export default async function handler(req, res) {
         // Admin monitoring console sees ALL businesses when ?all=true
         result = await query('SELECT * FROM businesses ORDER BY name ASC, id ASC');
       } else if (authUser) {
-        // Every user (including admins in workspace mode) sees strictly THEIR OWN businesses
-        result = await query('SELECT * FROM businesses WHERE owner_id = $1 ORDER BY name ASC, id ASC', [authUser.id]);
+        // Returns all businesses owned by user ID or matching owner email address
+        result = await query(`
+          SELECT DISTINCT b.* FROM businesses b
+          LEFT JOIN users u ON u.id = b.owner_id
+          LEFT JOIN registers r ON r.business_id = b.id
+          WHERE b.owner_id = $1 
+             OR LOWER(u.email) = LOWER($2)
+             OR LOWER(r.shared_with::text) LIKE LOWER($3)
+          ORDER BY b.name ASC, b.id ASC
+        `, [authUser.id, authUser.email || '', `%${authUser.email || ''}%`]);
       } else {
         // No auth — return empty
         return sendJson(res, 200, []);
