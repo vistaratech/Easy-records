@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.agtrust.recordbook',
-  appName: 'AG Trust Record Book',
+  appName: 'Easy Records',
   webDir: 'dist',
   server: {
     // Allow the APK to make network requests to the Vercel API backend

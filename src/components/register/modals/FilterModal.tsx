@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, X, ChevronRight, Filter, Plus, ChevronDown } from 'lucide-react';
-import { type Column } from '../../../lib/api';
+import { type Column, evaluateFormula } from '../../../lib/api';
 import { ColumnIcon } from '../ColumnIcon';
 
 
@@ -22,6 +22,27 @@ interface FilterModalProps {
   entries: any[];
 }
 
+function parseDateString(dStr: string) {
+  if (!dStr) return '';
+  if (dStr.includes('/') || dStr.includes('-')) {
+    const parts = dStr.split(/[/-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        const y = parts[0];
+        const m = parts[1].padStart(2, '0');
+        const d = parts[2].padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      } else {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2];
+        return `${y}-${m}-${d}`;
+      }
+    }
+  }
+  return dStr;
+}
+
 /* ── Operator definitions per column type ── */
 const TEXT_OPS = [
   { key: 'contains', label: 'Contains' },
@@ -39,8 +60,8 @@ const NUMBER_OPS = [
 ];
 
 const DATE_OPS = [
-  { key: 'date_between', label: 'In Between Dates' },
-  { key: 'date_is', label: 'Is' },
+  { key: 'date_between', label: 'From Date & To Date Range' },
+  { key: 'date_is', label: 'Is Date' },
   { key: 'date_before', label: 'Is Before' },
   { key: 'date_after', label: 'Is After' },
   { key: 'multi_select', label: 'Is Any Of' },
@@ -62,7 +83,10 @@ function getOpsForType(type: string) {
     case 'rating':
       return NUMBER_OPS;
     case 'date': return DATE_OPS;
-    case 'dropdown': return DROPDOWN_OPS;
+    case 'dropdown':
+    case 'yes_no':
+    case 'status':
+      return DROPDOWN_OPS;
     default: return TEXT_OPS;
   }
 }
@@ -93,23 +117,106 @@ export function FilterModal({
     return columns.filter(c => c.name.toLowerCase().includes(q));
   }, [columns, colSearch]);
   
+  // Excel-style cascading filter: pre-filter entries by all existing filters
+  // so the value list for the next filter only shows values from matching rows
+  const preFilteredEntries = useMemo(() => {
+    if (filters.length === 0) return entries;
+    return entries.filter(e => {
+      for (const f of filters) {
+        // For formula columns, compute the value dynamically
+        const filterCol = columns.find(c => c.id === f.columnId);
+        const val = (filterCol?.type === 'formula' && filterCol.formula)
+          ? evaluateFormula(filterCol.formula, e, columns).trim()
+          : (e.cells?.[f.columnId.toString()] || '').trim();
+        const lVal = val.toLowerCase();
+        const lFilter = (f.value || '').toLowerCase();
+        const valNum = parseFloat(val.replace(/[^0-9.-]/g, ''));
+        const nValue = parseFloat((f.value || '').replace(/[^0-9.-]/g, ''));
+        const nValue2 = parseFloat((f.value2 || '0').replace(/[^0-9.-]/g, ''));
+        let cond = true;
+        switch (f.operator) {
+          case 'contains': cond = lVal.includes(lFilter); break;
+          case 'not_contains': cond = !lVal.includes(lFilter); break;
+          case 'equals': cond = lVal === lFilter; break;
+          case 'not_equals': cond = lVal !== lFilter; break;
+          case 'starts_with': cond = lVal.startsWith(lFilter); break;
+          case 'ends_with': cond = lVal.endsWith(lFilter); break;
+          case 'eq': cond = !isNaN(valNum) && valNum === nValue; break;
+          case 'gt': cond = !isNaN(valNum) && valNum > nValue; break;
+          case 'gte': cond = !isNaN(valNum) && valNum >= nValue; break;
+          case 'lt': cond = !isNaN(valNum) && valNum < nValue; break;
+          case 'lte': cond = !isNaN(valNum) && valNum <= nValue; break;
+          case 'between': cond = !isNaN(valNum) && valNum >= nValue && valNum <= nValue2; break;
+          case 'not_between': cond = !isNaN(valNum) && (valNum < nValue || valNum > nValue2); break;
+          case 'date_is': {
+            const dVal = parseDateString(val);
+            const targetVal = parseDateString(f.value);
+            cond = dVal === targetVal;
+            break;
+          }
+          case 'date_before': {
+            const dVal = parseDateString(val);
+            const targetVal = parseDateString(f.value);
+            cond = dVal < targetVal;
+            break;
+          }
+          case 'date_after': {
+            const dVal = parseDateString(val);
+            const targetVal = parseDateString(f.value);
+            cond = dVal > targetVal;
+            break;
+          }
+          case 'date_between': {
+            const dVal = parseDateString(val);
+            const fromVal = f.value ? parseDateString(f.value) : '';
+            const toVal = f.value2 ? parseDateString(f.value2) : '';
+            if (fromVal && toVal) cond = dVal >= fromVal && dVal <= toVal;
+            else if (fromVal) cond = dVal >= fromVal;
+            else if (toVal) cond = dVal <= toVal;
+            break;
+          }
+          case 'multi_select': {
+            if (f.values && f.values.length > 0) {
+              cond = f.values.includes(val);
+            }
+            break;
+          }
+          case 'empty': cond = val === ''; break;
+          case 'not_empty': cond = val !== ''; break;
+          default: cond = true;
+        }
+        if (!cond) return false;
+      }
+      return true;
+    });
+  }, [entries, filters, columns]);
+
   const uniqueValues = useMemo(() => {
     if (!selectedColId) return [];
     const set = new Set<string>();
     const colIdStr = selectedColId.toString();
-    entries.forEach(e => {
-      const val = e.cells?.[colIdStr];
+    const col = columns.find(c => c.id === selectedColId);
+    preFilteredEntries.forEach(e => {
+      let val: string | undefined;
+      if (col?.type === 'formula' && col.formula) {
+        val = evaluateFormula(col.formula, e, columns);
+      } else {
+        val = e.cells?.[colIdStr];
+      }
       if (val && val.trim()) set.add(val.trim());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [selectedColId, entries]);
+  }, [selectedColId, preFilteredEntries, columns]);
 
   const selectedCol = columns.find(c => c.id === selectedColId);
   const ops = selectedCol ? getOpsForType(selectedCol.type) : [];
 
   const sortedDropdownOptions = useMemo(() => {
-    if (!selectedCol || !selectedCol.dropdownOptions) return [];
-    return [...selectedCol.dropdownOptions].sort((a, b) =>
+    if (!selectedCol) return [];
+    let opts = selectedCol.dropdownOptions || [];
+    if (selectedCol.type === 'yes_no' && opts.length === 0) opts = ['Yes', 'No'];
+    if (selectedCol.type === 'status' && opts.length === 0) opts = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
+    return [...opts].sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
     );
   }, [selectedCol]);
@@ -158,8 +265,8 @@ export function FilterModal({
       if (MULTI_VALUE_OPS.includes(selectedOp)) {
         if (selectedValues.length === 0) return;
       } else {
-        if (!val1.trim()) return;
-        if (BETWEEN_OPS.includes(selectedOp) && !val2.trim()) return;
+        if (!val1.trim() && !val2.trim()) return;
+        if (BETWEEN_OPS.includes(selectedOp) && selectedOp !== 'date_between' && !val2.trim()) return;
       }
     }
 
@@ -453,7 +560,7 @@ export function FilterModal({
                     </div>
 
                     <div className="fdp-value-area">
-                      {selectedCol?.type === 'dropdown' ? (
+                      {(selectedCol?.type === 'dropdown' || selectedCol?.type === 'yes_no' || selectedCol?.type === 'status') ? (
                         <select
                           className="fdp-input"
                           value={val1}
@@ -465,6 +572,32 @@ export function FilterModal({
                             <option key={opt} value={opt}>{opt.toUpperCase()}</option>
                           ))}
                         </select>
+                      ) : selectedOp === 'date_between' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', marginBottom: '4px' }}>
+                              From Date
+                            </label>
+                            <input
+                              className="fdp-input"
+                              type="date"
+                              value={val1}
+                              onChange={(e) => setVal1(e.target.value)}
+                              autoFocus
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', marginBottom: '4px' }}>
+                              To Date
+                            </label>
+                            <input
+                              className="fdp-input"
+                              type="date"
+                              value={val2}
+                              onChange={(e) => setVal2(e.target.value)}
+                            />
+                          </div>
+                        </div>
                       ) : (
                         <>
                           <input
@@ -494,8 +627,8 @@ export function FilterModal({
                     <button
                       className="fdp-confirm-btn"
                       disabled={
-                        (!NO_VALUE_OPS.includes(selectedOp) && !val1) ||
-                        (BETWEEN_OPS.includes(selectedOp) && !val2)
+                        (!NO_VALUE_OPS.includes(selectedOp) && !val1 && !val2) ||
+                        (BETWEEN_OPS.includes(selectedOp) && selectedOp !== 'date_between' && !val2)
                       }
                       onClick={handleAddFilter}
                     >

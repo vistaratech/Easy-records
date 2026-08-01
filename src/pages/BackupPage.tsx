@@ -113,8 +113,9 @@ export default function BackupPage() {
               ? evaluateFormula(c.formula || '', entry, cols)
               : (entry.cells?.[c.id.toString()] || '');
             
-            // Clean numeric values for Excel
-            if (c.type === 'number' || c.type === 'currency' || c.type === 'formula') {
+            if (c.type === 'checkbox') {
+              rowData.push(String(val) === 'true' ? 'YES' : '');
+            } else if (c.type === 'number' || c.type === 'currency' || c.type === 'formula') {
                 const cleaned = val.toString().replace(/[^\d.-]/g, '');
                 const n = parseFloat(cleaned);
                 rowData.push(isNaN(n) ? val : n);
@@ -139,7 +140,7 @@ export default function BackupPage() {
       const content = await zip.generateAsync({ type: 'blob' });
       const now = new Date();
       const timestamp = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}`;
-      const filename = `AG Trust [${timestamp}].zip`;
+      const filename = `Easy Records [${timestamp}].zip`;
 
       await mobileDownloadFile(content, filename, 'application/zip');
     },
@@ -198,13 +199,38 @@ export default function BackupPage() {
 
       {/* Header */}
       <div style={{ background: NAV, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', color: 'white' }}>
-        <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}>
-          <ArrowLeft size={22} />
+        <button 
+          onClick={() => navigate('/')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '10px',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: 'rgba(255, 255, 255, 0.1)',
+            color: '#ffffff',
+            fontWeight: 700,
+            fontSize: '13.5px',
+            cursor: 'pointer',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateX(-2px)';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+          }}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to Workspace</span>
         </button>
         <img src="/customer-logo.png" alt="Easy Records" style={{ width: '32px', height: '32px', objectFit: 'contain', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', padding: '3px' }} />
         <div>
           <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Backup &amp; Restore</h1>
-          <p style={{ margin: 0, fontSize: '13px', opacity: 0.7 }}>Easy Records</p>
+          <p style={{ margin: 0, fontSize: '13px', opacity: 0.7 }}>Easy Records · Smart Register</p>
         </div>
       </div>
 

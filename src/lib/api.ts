@@ -4,6 +4,12 @@ import { TEMPLATES, type Template, type TemplateColumn } from './templates';
 import { apiUrl } from './apiBase';
 // Local filesystem completely unmounted from regular API.
 
+// Helper: get auth headers for API requests (multi-tenant isolation)
+function authHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem('recordbook_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 // ==================== AUTH ====================
 export interface User {
   id: number | string;
@@ -20,6 +26,7 @@ export interface User {
     canDownload?: boolean;
     isAdmin?: boolean;
     canCreateSheets?: boolean;
+    canSelectBackDates?: boolean;
     viewRestrictions?: Record<string, number[]> | null;
     editRestrictions?: Record<string, number[]> | null;
     downloadRestrictions?: Record<string, number[]> | null;
@@ -31,6 +38,13 @@ export interface User {
     allowedRegisters?: string[];
     allowedFolders?: string[];
   };
+  trialEndsAt?: string | null;
+}
+
+export function canUserSelectBackDates(user?: User | null): boolean {
+  if (!user) return false;
+  if (user.role === 'superadmin' || user.role === 'admin' || user.permissions?.isAdmin) return true;
+  return !!user.permissions?.canSelectBackDates;
 }
 
 export interface SendOtpResponse { message: string; devOtp?: string; }
@@ -56,8 +70,12 @@ export async function getMe(): Promise<User> {
 // ==================== BUSINESSES ====================
 export interface Business { id: number; name: string; ownerId: number; createdAt: string; }
 
-export async function listBusinesses(): Promise<Business[]> {
-  const res = await fetch(apiUrl('/api/businesses'));
+export async function listBusinesses(all: boolean | unknown = false): Promise<Business[]> {
+  const isAll = typeof all === 'boolean' ? all : false;
+  const url = isAll ? apiUrl('/api/businesses?all=true') : apiUrl('/api/businesses');
+  const res = await fetch(url, {
+    headers: { ...authHeaders() }
+  });
   if (!res.ok) throw new Error('Failed to fetch businesses');
   return res.json();
 }
@@ -65,7 +83,7 @@ export async function listBusinesses(): Promise<Business[]> {
 export async function createBusiness(name: string): Promise<Business> {
   const res = await fetch(apiUrl('/api/businesses'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name })
   });
   if (!res.ok) throw new Error('Failed to create business');
@@ -81,7 +99,9 @@ export interface Folder {
 }
 
 export async function listFolders(businessId: number): Promise<Folder[]> {
-  const res = await fetch(apiUrl(`/api/folders?businessId=${businessId}`));
+  const res = await fetch(apiUrl(`/api/folders?businessId=${businessId}`), {
+    headers: { ...authHeaders() }
+  });
   if (!res.ok) throw new Error('Failed to fetch folders');
   return res.json();
 }
@@ -89,7 +109,7 @@ export async function listFolders(businessId: number): Promise<Folder[]> {
 export async function createFolder(businessId: number, name: string): Promise<Folder> {
   const res = await fetch(apiUrl('/api/folders'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ businessId, name })
   });
   if (!res.ok) throw new Error('Failed to create folder');
@@ -98,7 +118,8 @@ export async function createFolder(businessId: number, name: string): Promise<Fo
 
 export async function deleteFolder(folderId: number): Promise<void> {
   const res = await fetch(apiUrl(`/api/folders/${folderId}`), {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: { ...authHeaders() }
   });
   if (!res.ok) throw new Error('Failed to delete folder');
 }
@@ -106,7 +127,7 @@ export async function deleteFolder(folderId: number): Promise<void> {
 export async function renameFolder(folderId: number, newName: string): Promise<Folder> {
   const res = await fetch(apiUrl(`/api/folders/${folderId}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name: newName })
   });
   if (!res.ok) throw new Error('Failed to rename folder');
@@ -134,6 +155,41 @@ export interface Column {
   bgColor?: string;
   minVal?: number;
   maxVal?: number;
+  optionColors?: Record<string, string>;
+}
+
+export function getOptionBadgeStyle(col: Column | any, val: string) {
+  if (!val) return { background: 'transparent', color: 'inherit', borderColor: 'transparent' };
+  const customColor = col?.optionColors?.[val] || col?.optionColors?.[val.toLowerCase()] || col?.optionColors?.[val.trim()];
+  if (customColor) {
+    return {
+      background: customColor + '1e',
+      color: customColor,
+      borderColor: customColor + '50',
+    };
+  }
+
+  const valLower = (val || '').trim().toLowerCase();
+  if (valLower === 'yes') {
+    return { background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' };
+  }
+  if (valLower === 'no') {
+    return { background: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' };
+  }
+  if (valLower === 'pending') {
+    return { background: '#fffbebf', color: '#b45309', borderColor: '#fde68a' };
+  }
+  if (valLower === 'in progress') {
+    return { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' };
+  }
+  if (valLower === 'completed' || valLower === 'done') {
+    return { background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' };
+  }
+  if (valLower === 'cancelled' || valLower === 'failed') {
+    return { background: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' };
+  }
+
+  return { background: '#f1f5f9', color: '#475569', borderColor: '#e2e8f0' };
 }
 
 export interface CellStyle {
@@ -504,7 +560,7 @@ export async function createRegister(data: {
   
   const res = await fetch(apiUrl('/api/registers'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
       businessId: data.businessId,
       folderId: data.folderId,
@@ -519,11 +575,26 @@ export async function createRegister(data: {
   
   if (!res.ok) throw new Error('Failed to create register');
   const summary = await res.json();
+
+  const fullSummary: RegisterSummary = {
+    id: Number(summary.id),
+    businessId: Number(summary.businessId || data.businessId),
+    folderId: summary.folderId ? Number(summary.folderId) : (data.folderId ? Number(data.folderId) : undefined),
+    name: summary.name || data.name,
+    icon: summary.icon || data.icon || '',
+    iconColor: summary.iconColor || data.iconColor || '#10B981',
+    category: summary.category || data.category || 'general',
+    template: summary.template || data.template || '',
+    createdAt: summary.createdAt || new Date().toISOString(),
+    updatedAt: summary.updatedAt || new Date().toISOString(),
+    entryCount: summary.entryCount ?? 0,
+    lastActivity: summary.lastActivity || ''
+  };
+
+  await getRegister(fullSummary.id);
   
-  await getRegister(summary.id);
-  
-  await logAction(data.businessId, 'Create Register', `Created register: ${data.name}`, { registerId: summary.id, registerName: data.name });
-  return summary;
+  await logAction(data.businessId, 'Create Register', `Created register: ${data.name}`, { registerId: fullSummary.id, registerName: data.name });
+  return fullSummary;
 }
 
 export async function deleteRegister(registerId: number): Promise<void> {
@@ -1255,7 +1326,7 @@ export function evaluateFormula(formula: string, entry: Entry, columns: Column[]
 
 // ─── Column Operations ──────────────────────────────────────────────────────
 
-export async function addColumn(registerId: number, data: { name: string; type: string; dropdownOptions?: string[]; formula?: string; minVal?: number; maxVal?: number }): Promise<RegisterDetail> {
+export async function addColumn(registerId: number, data: { name: string; type: string; dropdownOptions?: string[]; formula?: string; minVal?: number; maxVal?: number; optionColors?: Record<string, string> }): Promise<RegisterDetail> {
   return runQueuedMutation(registerId, async () => {
     const reg = await getRegDoc(registerId);
     reg.columns.sort((a, b) => a.position - b.position); // ensure canonical order
@@ -1263,7 +1334,7 @@ export async function addColumn(registerId: number, data: { name: string; type: 
     const col: Column = {
       id: colId, registerId, name: data.name, type: data.type,
       position: reg.columns.length, dropdownOptions: data.dropdownOptions, formula: data.formula,
-      minVal: data.minVal, maxVal: data.maxVal
+      minVal: data.minVal, maxVal: data.maxVal, optionColors: data.optionColors
     };
     reg.columns.push(col);
     reg.columns.forEach((c, i) => c.position = i); // re-normalise
@@ -1423,6 +1494,7 @@ export async function updateColumnDropdownOptions(
   registerId: number,
   columnId: number,
   options: string[],
+  optionColors?: Record<string, string>,
   preventSync?: boolean
 ): Promise<RegisterDetail> {
   const result = await runQueuedMutation(registerId, async () => {
@@ -1430,6 +1502,9 @@ export async function updateColumnDropdownOptions(
     const col = reg.columns.find((c) => c.id.toString() === columnId.toString());
     if (!col) throw new Error('Column not found');
     col.dropdownOptions = options;
+    if (optionColors !== undefined) {
+      col.optionColors = optionColors;
+    }
     await saveRegDocImmediate(reg);
     return { reg, col };
   });
@@ -1437,7 +1512,7 @@ export async function updateColumnDropdownOptions(
   const { reg, col } = result;
 
   if (!preventSync && col.linkedTo) {
-    await updateColumnDropdownOptions(col.linkedTo.registerId, col.linkedTo.columnId, options, true)
+    await updateColumnDropdownOptions(col.linkedTo.registerId, col.linkedTo.columnId, options, optionColors, true)
       .catch(e => console.error("Failed to sync column dropdown options change:", e));
   }
 
@@ -1553,7 +1628,7 @@ export async function changeColumnType(
   registerId: number,
   columnId: number,
   newType: string,
-  options?: { formula?: string; dropdownOptions?: string[]; minVal?: number; maxVal?: number },
+  options?: { formula?: string; dropdownOptions?: string[]; minVal?: number; maxVal?: number; optionColors?: Record<string, string> },
   preventSync?: boolean
 ): Promise<RegisterDetail> {
   const result = await runQueuedMutation(registerId, async () => {
@@ -1572,10 +1647,12 @@ export async function changeColumnType(
       col.formula = undefined;
     }
 
-    if (newType === 'dropdown') {
+    if (['dropdown', 'yes_no', 'status'].includes(newType)) {
       col.dropdownOptions = options?.dropdownOptions;
+      col.optionColors = options?.optionColors;
     } else {
       col.dropdownOptions = undefined;
+      col.optionColors = undefined;
     }
 
     if (newType === 'currency' || newType === 'number') {
@@ -1680,7 +1757,7 @@ export async function clearColumnData(registerId: number, columnId: number): Pro
   });
 }
 
-export async function insertColumn(registerId: number, data: { name: string; type: string; dropdownOptions?: string[]; formula?: string; minVal?: number; maxVal?: number }, position: number): Promise<RegisterDetail> {
+export async function insertColumn(registerId: number, data: { name: string; type: string; dropdownOptions?: string[]; formula?: string; minVal?: number; maxVal?: number; optionColors?: Record<string, string> }, position: number): Promise<RegisterDetail> {
   return runQueuedMutation(registerId, async () => {
     const reg = await getRegDoc(registerId);
     const colId = generateId();
@@ -1751,7 +1828,7 @@ export async function addEntry(registerId: number, cells: Record<string, string>
     
     const res = await fetch(apiUrl(`/api/registers/${registerId}/entries`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(entry)
     });
     if (!res.ok) throw new Error('Failed to add entry');
@@ -1818,7 +1895,7 @@ export async function insertEntry(registerId: number, cells: Record<string, stri
 
     const res = await fetch(apiUrl(`/api/registers/${registerId}/entries`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(entry)
     });
     if (!res.ok) throw new Error('Failed to insert entry');
@@ -1874,7 +1951,7 @@ export async function updateEntry(registerId: number, entryId: number, cells: Re
 
   const res = await fetch(apiUrl(`/api/registers/${registerId}/entries/${entryId}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ cells: entry.cells, cellStyles: entry.cellStyles, pageIndex: entry.pageIndex, rowNumber: entry.rowNumber })
   });
   if (!res.ok) throw new Error('Failed to update entry');
@@ -3074,4 +3151,35 @@ export async function renameSavedShortcut(id: string, newName: string): Promise<
     body: JSON.stringify({ name: newName })
   });
   if (!res.ok) throw new Error('Failed to rename shortcut');
+}
+
+export interface DashboardConfig {
+  configuredSumMetrics: any[];
+  shortcutsOrder: string[];
+}
+
+export async function getDashboardConfig(businessId: number): Promise<DashboardConfig> {
+  const res = await fetch(apiUrl(`/api/dashboard-config?businessId=${businessId}`));
+  if (!res.ok) throw new Error('Failed to fetch dashboard configuration');
+  return res.json();
+}
+
+export async function saveDashboardConfig(businessId: number, configuredSumMetrics: any[], shortcutsOrder: string[]): Promise<void> {
+  const res = await fetch(apiUrl('/api/dashboard-config'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ businessId, configuredSumMetrics, shortcutsOrder })
+  });
+  if (!res.ok) throw new Error('Failed to save dashboard configuration');
+}
+
+export async function extendUserTrial(userId: string | number, newTrialEndsAt?: string, extensionDays?: number): Promise<User> {
+  const res = await fetch(apiUrl(`/api/auth/users/${userId}/extend-trial`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newTrialEndsAt, extensionDays })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to extend trial');
+  return data.user;
 }

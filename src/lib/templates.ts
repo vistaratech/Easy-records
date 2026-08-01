@@ -2,21 +2,23 @@
 
 export const CATEGORIES = [
   { id: 'blank',        icon: 'plus',           color: '#10B981', name: 'Blank Register' },
-  { id: 'property',     icon: 'building',      color: '#3B82F6', name: 'Property' },
-  { id: 'school',       icon: 'graduation-cap', color: '#10B981', name: 'School' },
-  { id: 'shop',         icon: 'store',          color: '#F59E0B', name: 'Shop' },
-  { id: 'transport',    icon: 'bus',            color: '#6366F1', name: 'Transport' },
+  { id: 'cashbook',     icon: 'wallet',         color: '#10B981', name: 'Daily Cash & Expenses' },
+  { id: 'shop',         icon: 'store',          color: '#F59E0B', name: 'Shop & Retail Sales' },
+  { id: 'accounts',     icon: 'calculator',     color: '#6366F1', name: 'Accounts & Billing' },
+  { id: 'property',     icon: 'building',      color: '#3B82F6', name: 'Property & Real Estate' },
+  { id: 'school',       icon: 'graduation-cap', color: '#10B981', name: 'School & Coaching' },
+  { id: 'transport',    icon: 'bus',            color: '#6366F1', name: 'Transport & Fleet' },
   { id: 'wholesaler',   icon: 'warehouse',      color: '#8B5CF6', name: 'Whole Saler' },
-  { id: 'distributors', icon: 'package',        color: '#EC4899', name: 'Distributors' },
+  { id: 'distributors', icon: 'package',        color: '#EC4899', name: 'Distributors & Stock' },
   { id: 'event',        icon: 'calendar',       color: '#EF4444', name: 'Event Management' },
-  { id: 'hospitals',    icon: 'heart-pulse',    color: '#14B8A6', name: 'Hospitals' },
-  { id: 'restaurant',   icon: 'utensils',       color: '#F97316', name: 'Restaurant Canteen' },
-  { id: 'fitness',      icon: 'dumbbell',       color: '#06B6D4', name: 'Health Fitness' },
-  { id: 'apartment',    icon: 'building-2',     color: '#64748B', name: 'Apartment' },
-  { id: 'student',      icon: 'user',           color: '#0284C7', name: 'Student' },
+  { id: 'hospitals',    icon: 'heart-pulse',    color: '#14B8A6', name: 'Hospitals & Clinic' },
+  { id: 'restaurant',   icon: 'utensils',       color: '#F97316', name: 'Restaurant & Cafe' },
+  { id: 'fitness',      icon: 'dumbbell',       color: '#06B6D4', name: 'Health & Fitness Gym' },
+  { id: 'apartment',    icon: 'building-2',     color: '#64748B', name: 'Apartment Maintenance' },
+  { id: 'student',      icon: 'user',           color: '#0284C7', name: 'Student Records' },
   { id: 'insurance',    icon: 'shield-check',   color: '#059669', name: 'Insurance Agent' },
-  { id: 'farming',      icon: 'leaf',           color: '#84CC16', name: 'Farming' },
-  { id: 'travel',       icon: 'plane',          color: '#D946EF', name: 'Travel' },
+  { id: 'farming',      icon: 'leaf',           color: '#84CC16', name: 'Farming & Agriculture' },
+  { id: 'travel',       icon: 'plane',          color: '#D946EF', name: 'Travel & Tourism' },
 ];
 
 export interface TemplateColumn {
@@ -43,6 +45,84 @@ export interface Template {
 }
 
 export const TEMPLATES: Record<string, Template[]> = {
+
+  // ─── Cash & Expenses ──────────────────────────────────────────────────────────
+  cashbook: [
+    {
+      name: 'Daily Cash Book',
+      icon: 'wallet',
+      description: 'Track daily cash in, cash out, and balance',
+      columns: [
+        { name: 'Date',          type: 'date' },
+        { name: 'Particulars',   type: 'text' },
+        { name: 'Cash In (Rec)', type: 'number' },
+        { name: 'Cash Out (Paid)',type: 'number' },
+        { name: 'Net Balance',   type: 'formula', formula: '{Cash In (Rec)}-{Cash Out (Paid)}' },
+        { name: 'Mode',          type: 'dropdown', dropdownOptions: ['Cash', 'UPI / GPay', 'Bank Transfer', 'Cheque'] },
+        { name: 'Remarks',       type: 'text' },
+      ],
+    },
+    {
+      name: 'Daily Expense Tracker',
+      icon: 'dollar-sign',
+      description: 'Track office, shop, and operational expenses',
+      columns: [
+        { name: 'Date',         type: 'date' },
+        { name: 'Expense Type', type: 'dropdown', dropdownOptions: ['Tea & Snacks', 'Rent', 'Electricity', 'Salary', 'Transport', 'Raw Materials', 'Maintenance', 'Other'] },
+        { name: 'Description',  type: 'text' },
+        { name: 'Amount Paid',  type: 'number' },
+        { name: 'Paid To',      type: 'text' },
+        { name: 'Payment Mode', type: 'dropdown', dropdownOptions: ['Cash', 'UPI', 'Card', 'Bank'] },
+      ],
+    },
+    {
+      name: 'Customer Credit (Udhar) Ledger',
+      icon: 'book-open',
+      description: 'Customer credit given, received, and pending balance',
+      columns: [
+        { name: 'Date',            type: 'date' },
+        { name: 'Customer Name',   type: 'text' },
+        { name: 'Mobile No',       type: 'phone' },
+        { name: 'Credit Given (Udhar)', type: 'number' },
+        { name: 'Payment Received', type: 'number' },
+        { name: 'Pending Balance', type: 'formula', formula: '{Credit Given (Udhar)}-{Payment Received}' },
+        { name: 'Status',          type: 'dropdown', dropdownOptions: ['Pending', 'Partial', 'Cleared'] },
+      ],
+    },
+    { name: 'Blank Register', columns: DEFAULT_BLANK_COLUMNS, icon: 'file', description: 'Start from scratch' },
+  ],
+
+  // ─── Accounts & Billing ──────────────────────────────────────────────────────
+  accounts: [
+    {
+      name: 'Sales & Billing Log',
+      icon: 'receipt',
+      description: 'Daily customer invoices with auto totals and balance',
+      columns: [
+        { name: 'Invoice Date',  type: 'date' },
+        { name: 'Invoice No',    type: 'text' },
+        { name: 'Customer Name', type: 'text' },
+        { name: 'Total Bill Amount', type: 'number' },
+        { name: 'Amount Paid',   type: 'number' },
+        { name: 'Balance Due',   type: 'formula', formula: '{Total Bill Amount}-{Amount Paid}' },
+        { name: 'Payment Status',type: 'dropdown', dropdownOptions: ['Paid in Full', 'Partially Paid', 'Unpaid / Overdue'] },
+      ],
+    },
+    {
+      name: 'Supplier Purchase Ledger',
+      icon: 'shopping-bag',
+      description: 'Track vendor purchases and pending payments',
+      columns: [
+        { name: 'Purchase Date', type: 'date' },
+        { name: 'Supplier Name', type: 'text' },
+        { name: 'Bill Amount',   type: 'number' },
+        { name: 'Paid Amount',   type: 'number' },
+        { name: 'Balance Payable', type: 'formula', formula: '{Bill Amount}-{Paid Amount}' },
+        { name: 'Due Date',      type: 'date' },
+      ],
+    },
+    { name: 'Blank Register', columns: DEFAULT_BLANK_COLUMNS, icon: 'file', description: 'Start from scratch' },
+  ],
 
   // ─── Student ──────────────────────────────────────────────────
   student: [

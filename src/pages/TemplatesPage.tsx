@@ -8,7 +8,8 @@ import {
   ArrowLeft, FileText, Hash, Calendar, ChevronDown, FlaskConical, Type,
   Building, GraduationCap, Store, Bus, Warehouse, Package, CalendarIcon, HeartPulse,
   Utensils, Dumbbell, Building2, User, ShieldCheck, Leaf, Plane,
-  Phone, Mail, Globe, Star, CheckSquare, Image, Plus, Bookmark, Trash2
+  Phone, Mail, Globe, Star, CheckSquare, Image, Plus, Bookmark, Trash2,
+  Wallet, Calculator, DollarSign, Receipt, ShoppingBag, BookOpen
 } from 'lucide-react';
 
 import { CategoryCard } from '../components/templates/CategoryCard';
@@ -19,6 +20,8 @@ const ICON_MAP: Record<string, any> = {
   'warehouse': Warehouse, 'package': Package, 'calendar': CalendarIcon, 'heart-pulse': HeartPulse,
   'utensils': Utensils, 'dumbbell': Dumbbell, 'building-2': Building2, 'user': User,
   'shield-check': ShieldCheck, 'leaf': Leaf, 'plane': Plane, 'plus': Plus,
+  'wallet': Wallet, 'calculator': Calculator, 'dollar-sign': DollarSign,
+  'receipt': Receipt, 'shopping-bag': ShoppingBag, 'book-open': BookOpen
 };
 
 function getColTypeIcon(type: string) {
@@ -79,7 +82,6 @@ export default function TemplatesPage() {
 
   const createMutation = useMutation({
     mutationFn: (tpl: { name: string; columns: any[]; icon: string; iconColor?: string; category?: string }) => {
-      // Capture businessId at call time so onSuccess closure is never stale
       return createRegister({
         businessId: businessId!,
         name: tpl.name,
@@ -96,23 +98,18 @@ export default function TemplatesPage() {
       });
     },
     onSuccess: (newReg) => {
-      // Use newReg.businessId (always defined) instead of the outer businessId closure
-      // which can be undefined if the businesses query hasn't resolved yet
-      const bId = newReg.businessId;
-      // Directly patch the register list cache — bypasses staleTime entirely
-      queryClient.setQueryData(['registers', bId], (old: RegisterSummary[] | undefined) => {
-        const safeOld = old || [];
-        if (safeOld.find((r) => r.id === newReg.id)) return safeOld;
-        return [...safeOld, {
-          id: newReg.id, businessId: newReg.businessId, name: newReg.name,
-          icon: newReg.icon, iconColor: newReg.iconColor,
-          category: newReg.category, template: newReg.template,
-          createdAt: newReg.createdAt, updatedAt: newReg.updatedAt,
-          entryCount: newReg.entryCount ?? 0, lastActivity: '',
-        }];
-      });
-      // Background refetch to sync server state (won't block navigation)
-      queryClient.invalidateQueries({ queryKey: ['registers', bId] });
+      const bId = newReg.businessId || businessId;
+      if (bId) {
+        queryClient.setQueryData(['registers', bId], (old: RegisterSummary[] | undefined) => {
+          const safeOld = old || [];
+          if (safeOld.find((r) => r.id === newReg.id)) return safeOld;
+          return [...safeOld, newReg];
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['registers'] });
+      if (bId) {
+        queryClient.invalidateQueries({ queryKey: ['registers', bId] });
+      }
       navigate(`/register/${newReg.id}`);
     },
     onError: (err: any) => {
@@ -126,21 +123,52 @@ export default function TemplatesPage() {
 
   return (
     <div className="templates-page-root content-area templates-page-scroll">
-      {/* Header */}
-      <div className="register-header">
-        <button className="register-header-btn" onClick={() => navigate(-1)}>
-          <ArrowLeft size={14} /> Back
+      {/* Header with Modern Styled Back Button */}
+      <div className="register-header" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <button 
+          onClick={() => navigate('/')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, var(--surface) 0%, var(--bg-secondary) 100%)',
+            color: 'var(--navy)',
+            fontWeight: 700,
+            fontSize: '13.5px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateX(-2px)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.color = 'var(--accent)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.borderColor = 'var(--border)';
+            e.currentTarget.style.color = 'var(--navy)';
+          }}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to Workspace</span>
         </button>
-        <h1 className="register-header-title">Choose a Template</h1>
+        <h1 className="register-header-title" style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Choose a Register Template</h1>
       </div>
 
       {/* Category Grid */}
-      <div className="templates-page-body">
-        <h2 className="templates-heading">Select a Template</h2>
-        <p className="templates-subheading">
-          Choose a blank register or use one of your custom templates.
-        </p>
-        <div className="categories-grid categories-grid--no-pad">
+      <div className="templates-page-body" style={{ padding: '24px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <h2 className="templates-heading" style={{ margin: '0 0 6px', fontSize: '22px', fontWeight: 800 }}>Select a Business Template</h2>
+          <p className="templates-subheading" style={{ margin: 0, color: 'var(--muted)', fontSize: '14px' }}>
+            Choose a ready-to-use business template or start with a blank custom register.
+          </p>
+        </div>
+
+        <div className="categories-grid categories-grid--no-pad" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
           {/* Blank Register */}
           <CategoryCard 
             key="blank"
@@ -178,7 +206,6 @@ export default function TemplatesPage() {
                 });
               }}
             >
-              {/* Trash button to delete template */}
               <button 
                 className="delete-template-btn" 
                 title="Delete template"
@@ -217,6 +244,21 @@ export default function TemplatesPage() {
               <div className="category-count">{tpl.columns.length} columns</div>
             </div>
           ))}
+
+          {/* All Pre-built Business Template Categories */}
+          {CATEGORIES.filter((c) => c.id !== 'blank').map((cat) => {
+            const IconComp = ICON_MAP[cat.icon] || FileText;
+            const count = (TEMPLATES[cat.id] || []).length;
+            return (
+              <CategoryCard
+                key={cat.id}
+                cat={cat}
+                icon={IconComp}
+                count={count}
+                onClick={() => setSelectedCategory(cat.id)}
+              />
+            );
+          })}
         </div>
       </div>
 

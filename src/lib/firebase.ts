@@ -4,16 +4,21 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBLYtTJtHGfIaIkdi5Qw41wm6sD-tEpGZQ",
-  authDomain: "sjvps-5a7f0.firebaseapp.com",
-  projectId: "sjvps-5a7f0",
-  storageBucket: "sjvps-5a7f0.firebasestorage.app",
-  messagingSenderId: "195226208341",
-  appId: "1:195226208341:web:d8c0e179e136b4369e2cdc",
-  measurementId: "G-6NQGNFC8PQ"
+  apiKey: "AIzaSyDJ2o4ITTYPSl0VFNqc9w20FLHgeRErB9Q",
+  authDomain: "easyrecords-3487b.firebaseapp.com",
+  projectId: "easyrecords-3487b",
+  storageBucket: "easyrecords-3487b.firebasestorage.app",
+  messagingSenderId: "757886160908",
+  appId: "1:757886160908:web:8bc25bc02446e2dc5fde29",
+  measurementId: "G-WR6QTJ103Z"
 };
 
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+
 const app = initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 
 // Initialize Firestore with multi-tab offline persistence for robust data retention
 export const db = initializeFirestore(app, {

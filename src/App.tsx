@@ -11,7 +11,7 @@ import HomePage from './pages/HomePage';
 
 import AdminLoginPage from './admin/pages/AdminLoginPage';
 import AdminDashboard from './admin/pages/AdminDashboard';
-import AdminUserSettingsPage from './admin/pages/AdminUserSettingsPage';
+
 import './index.css';
 import { NotificationProvider, useNotifications } from './lib/NotificationContext';
 
@@ -57,14 +57,9 @@ const queryClient = new QueryClient({
 });
 
 function PrivateRoute({ children, fallback = "/login" }: { children: React.ReactNode, fallback?: string }) {
-  const { token, user, isLoading } = useAuth();
+  const { token, isLoading } = useAuth();
   if (isLoading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--background)', color: 'var(--navy)', fontSize: '16px', fontWeight: 500 }}>Authenticating...</div>;
   if (!token) return <Navigate to={fallback} replace />;
-  // sheet_admin always goes to workspace directly — no admin dashboard access
-  // admin/superadmin go to admin dashboard unless they explicitly clicked "Main Workspace"
-  if ((user?.role === 'admin' || user?.role === 'superadmin') && !sessionStorage.getItem('admin_workspace_mode')) {
-    return <Navigate to="/admin/dashboard" replace />;
-  }
   return <>{children}</>;
 }
 
@@ -72,8 +67,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { token, user, isLoading } = useAuth();
   if (isLoading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--background)', color: 'var(--navy)', fontSize: '16px', fontWeight: 500 }}>Authenticating...</div>;
   if (!token) return <Navigate to="/admin/login" replace />;
-  if (user?.role !== 'admin' && user?.role !== 'superadmin') {
-    return <Navigate to="/admin/login" replace />;
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin' || user?.permissions?.isAdmin;
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }
@@ -104,7 +100,7 @@ function AppRoutes() {
       <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="/admin/login" element={token && isSystemAdmin ? <Navigate to="/admin/dashboard" replace /> : <AdminLoginPage />} />
       <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-      <Route path="/admin/users/:id" element={<AdminRoute><AdminUserSettingsPage /></AdminRoute>} />
+
 
       {/* ── App routes ── */}
       <Route path="/*" element={<PrivateRoute><HomePage /></PrivateRoute>} />

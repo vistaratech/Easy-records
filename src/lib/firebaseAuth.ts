@@ -48,6 +48,64 @@ export async function firebaseLogin(email: string, password: string) {
   return res.json();
 }
 
+export async function firebaseSignup(name: string, email: string, password: string, phone?: string) {
+  const res = await fetch(apiUrl('/api/auth/signup'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, phone })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Signup failed');
+  }
+  return res.json();
+}
+
+export async function firebaseDirectGoogleLogin(email: string, name?: string) {
+  const res = await fetch(apiUrl('/api/auth/google'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name || email.split('@')[0], email, googleId: 'gmail_' + Date.now() })
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Google sign in failed');
+  }
+  return res.json();
+}
+
+export async function firebaseGoogleLogin() {
+  const { auth, googleProvider } = await import('./firebase');
+  const { signInWithPopup } = await import('firebase/auth');
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+    const email = user.email || '';
+    const name = user.displayName || email.split('@')[0] || 'Google User';
+
+    const res = await fetch(apiUrl('/api/auth/google'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, googleId: user.uid, photoUrl: user.photoURL || '' })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Google sign in failed');
+    }
+    return res.json();
+  } catch (err: any) {
+    if (err.code === 'auth/configuration-not-found' || err.message?.includes('configuration-not-found')) {
+      const isConfigNotFound = true;
+      const customErr: any = new Error('Google Sign-In is not turned on in your Firebase Console yet.');
+      customErr.isConfigNotFound = isConfigNotFound;
+      throw customErr;
+    }
+    throw err;
+  }
+}
+
 export async function firebaseAdminLogin(email: string, password: string) {
   const result = await firebaseLogin(email, password);
   if (result.user.role !== 'admin' && result.user.role !== 'superadmin') {

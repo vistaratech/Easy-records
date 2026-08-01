@@ -45,7 +45,3 @@ temp_git/
 env
 *.csv
 temp_sdk/
-
-# Environment backups
-.env.backup
-.env.new

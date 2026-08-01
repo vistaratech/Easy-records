@@ -2,22 +2,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/auth';
 import { useNavigate } from 'react-router-dom';
 import { firebaseLogout } from '../../lib/firebaseAuth';
-import { LayoutDashboard, Users, Activity, LogOut, BarChart3, Menu, X, ShieldAlert, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Menu, X } from 'lucide-react';
 import AdminUsersPage from './AdminUsersPage';
-import AdminActivityPage from './AdminActivityPage';
-import AdminDownloadRequestsPage from './AdminDownloadRequestsPage';
-import AdminAnalyticsPage from './AdminAnalyticsPage';
-import AdminActiveReportPage from './AdminActiveReportPage';
-import RecycleBinPage from '../../pages/RecycleBinPage';
-import AdminOverviewPage from './AdminOverviewPage';
 
 export default function AdminDashboard() {
   const { user, logout, token } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview'|'users'|'activity'|'report'|'downloads'|'analytics'|'recycle'>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Clear workspace mode when entering admin dashboard
   useEffect(() => {
     sessionStorage.removeItem('admin_workspace_mode');
   }, []);
@@ -28,21 +20,6 @@ export default function AdminDashboard() {
     logout();
     navigate('/admin/login');
   };
-
-  const handleTabClick = (tab: typeof activeTab) => {
-    setActiveTab(tab);
-    setSidebarOpen(false); // auto-close on mobile
-  };
-
-  const navItems: { key: typeof activeTab; icon: any; label: string }[] = [
-    { key: 'overview', icon: <LayoutDashboard size={18}/>, label: 'Overview' },
-    { key: 'users', icon: <Users size={18}/>, label: 'Users & Roles' },
-    { key: 'activity', icon: <Activity size={18}/>, label: 'Activity Log' },
-    { key: 'report', icon: <FileSpreadsheet size={18}/>, label: 'Active Report' },
-    { key: 'downloads', icon: <ShieldAlert size={18}/>, label: 'Approval Requests' },
-    { key: 'analytics', icon: <BarChart3 size={18}/>, label: 'Analytics' },
-    { key: 'recycle', icon: <Trash2 size={18}/>, label: 'Recycle Bin' },
-  ];
 
   return (
     <div className="admin-animate-fade-in" style={{minHeight:'100vh',background:'var(--background)',display:'flex',position:'relative'}}>
@@ -60,7 +37,7 @@ export default function AdminDashboard() {
         <h1 style={{margin:0,fontSize:'16px',fontWeight:800,color:'white',display:'flex',alignItems:'center',gap:'8px'}}>
           <img src="/customer-logo.png" alt="Easy Records" style={{ width: '18px', height: '18px', objectFit: 'contain' }} /> Easy Admin
         </h1>
-        <div style={{width:'30px'}}/>
+        <div style={{ width: 40 }} />
       </div>
 
       {/* Backdrop for mobile */}
@@ -97,17 +74,15 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{padding:'20px 12px',flex:1,display:'flex',flexDirection:'column',gap:'6px'}}>
-          {navItems.map(item => (
-            <button key={item.key} onClick={() => handleTabClick(item.key)} className="admin-nav-button" style={{
-              display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',borderRadius:'10px',border:'none',
-              background:activeTab===item.key?'var(--brand-blue-light)':'transparent',
-              color:activeTab===item.key?'var(--accent)':'var(--muted)',
-              borderLeft:activeTab===item.key?'3px solid var(--accent)':'3px solid transparent',
-              cursor:'pointer',textAlign:'left',fontWeight:600,fontSize:'14px',transition:'all 0.2s',width:'100%'
-            }}>
-              <span style={{color:activeTab===item.key?'var(--accent)':'var(--placeholder)',display:'flex'}}>{item.icon}</span> {item.label}
-            </button>
-          ))}
+          <button className="admin-nav-button" style={{
+            display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',borderRadius:'10px',border:'none',
+            background:'var(--brand-blue-light)',
+            color:'var(--accent)',
+            borderLeft:'3px solid var(--accent)',
+            cursor:'pointer',textAlign:'left',fontWeight:600,fontSize:'14px',transition:'all 0.2s',width:'100%'
+          }}>
+            <span style={{color:'var(--accent)',display:'flex'}}><Users size={18}/></span> Users & Monitoring
+          </button>
         </div>
 
         <div style={{padding:'16px 12px',borderTop:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:'8px'}}>
@@ -120,18 +95,11 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content — Single page: Users & Monitoring */}
       <div className="admin-main-content" style={{flex:1,padding:'30px 40px',overflowY:'auto',height:'100vh',boxSizing:'border-box',background:'var(--background)'}}>
-        {activeTab === 'overview' && <AdminOverviewPage onNavigateTab={handleTabClick} />}
-        {activeTab === 'users' && <AdminUsersPage />}
-        {activeTab === 'activity' && <AdminActivityPage />}
-        {activeTab === 'report' && <AdminActiveReportPage />}
-        {activeTab === 'downloads' && <AdminDownloadRequestsPage />}
-        {activeTab === 'analytics' && <AdminAnalyticsPage />}
-        {activeTab === 'recycle' && <RecycleBinPage isAdminPanel={true} />}
+        <AdminUsersPage />
       </div>
 
-      {/* Responsive CSS injected inline */}
       <style>{`
         .admin-nav-button:hover {
           background: var(--bg-secondary) !important;

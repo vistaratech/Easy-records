@@ -105,8 +105,10 @@ export function RegisterHeader({
     }
   };
 
+  const canDeleteDirectly = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'sheet_admin' || (user as any)?.permissions?.isAdmin || (user as any)?.permissions?.fullSheetAccess;
+
   const handleDeleteClick = async () => {
-    if (isSuperAdmin) {
+    if (canDeleteDirectly) {
       if (window.confirm(`Are you sure you want to PERMANENTLY DELETE the register "${register?.name}"? This cannot be undone.`)) {
         try {
           await deleteRegister(register.id);
@@ -172,7 +174,7 @@ export function RegisterHeader({
           
           <button className="more-menu-item danger" onClick={handleDeleteClick}>
             <Trash2 size={16} />
-            <span>{isSuperAdmin ? 'Delete Register' : 'Request Deletion'}</span>
+            <span>{canDeleteDirectly ? 'Delete Register' : 'Request Deletion'}</span>
           </button>
         </div>
       )}

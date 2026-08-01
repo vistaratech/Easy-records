@@ -16,6 +16,7 @@ import { NotificationPanel } from '../components/common/NotificationPanel';
 import { useNotifications } from '../lib/NotificationContext';
 import { useAuth } from '../lib/auth';
 import { RequestModal } from '../components/register/modals/RequestModal';
+import OnboardingWizard, { ONBOARDING_KEY_PREFIX } from '../components/common/OnboardingWizard';
 
 // Lazy-load heavy page components — only downloaded when navigated to
 const RegisterPage = lazy(() => import('./RegisterPage'));
@@ -24,10 +25,16 @@ const HistoryPage = lazy(() => import('./HistoryPage'));
 const RecycleBinPage = lazy(() => import('./RecycleBinPage'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const BackupPage = lazy(() => import('./BackupPage'));
+const FolderPage = lazy(() => import('./FolderPage'));
 
 const RegisterPageWrapper = memo(() => {
   const { id } = useParams();
   return <RegisterPage key={id} />;
+});
+
+const FolderPageWrapper = memo(() => {
+  const { folderId } = useParams();
+  return <FolderPage key={folderId} />;
 });
 
 
@@ -52,8 +59,31 @@ export default function HomePage() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const { unreadCount } = useNotifications();
   const [requestModal, setRequestModal] = useState<{ type: 'download' | 'delete_register'; isOpen: boolean; regId?: number; regName?: string }>({ type: 'delete_register', isOpen: false });
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      const key = `${ONBOARDING_KEY_PREFIX}${user.id}`;
+      const completed = localStorage.getItem(key);
+      if (!completed) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [user?.id]);
+
+  const handleCloseOnboarding = useCallback(() => {
+    if (user?.id) {
+      localStorage.setItem(`${ONBOARDING_KEY_PREFIX}${user.id}`, 'true');
+    }
+    setShowOnboarding(false);
+  }, [user?.id]);
+
+  const handleReOpenOnboarding = useCallback(() => {
+    setShowOnboarding(true);
+  }, []);
 
   const isSuperAdmin = user?.role === 'superadmin';
+  const canDeleteDirectly = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'sheet_admin' || (user as any)?.permissions?.isAdmin || (user as any)?.permissions?.fullSheetAccess;
   const toggleCollapse = useCallback(() => {
     setIsSidebarCollapsed(prev => {
       const next = !prev;
@@ -510,6 +540,7 @@ export default function HomePage() {
         toggleCollapse={toggleCollapse}
         unreadCount={unreadCount}
         onToggleNotifications={() => setIsNotificationsOpen(!isNotificationsOpen)}
+        onOpenOnboarding={handleReOpenOnboarding}
       />
 
       <NotificationPanel 
@@ -542,9 +573,12 @@ export default function HomePage() {
               excelMutation={excelMutation}
               handleFileUpload={handleFileUpload}
               onInputFolder={handleFolderUpload}
+              search={search}
+              setSearch={setSearch}
             />
           } />
           <Route path="register/:id" element={<RegisterPageWrapper />} />
+          <Route path="folder/:folderId" element={<FolderPageWrapper />} />
           <Route path="templates" element={<TemplatesPage />} />
           <Route path="templates/:categoryId" element={<TemplatesPage />} />
           <Route path="history" element={<HistoryPage />} />
@@ -579,7 +613,7 @@ export default function HomePage() {
             </button>
             <button className="context-item danger" onClick={() => {
               const reg = filtered?.find((r) => r.id === menuId);
-              if (isSuperAdmin) {
+              if (canDeleteDirectly) {
                 if (confirm(`Delete this register "${reg?.name}"?`)) deleteMutation.mutate(menuId);
               } else {
                 setRequestModal({ type: 'delete_register', isOpen: true, regId: menuId, regName: reg?.name });
@@ -587,7 +621,7 @@ export default function HomePage() {
               setMenuId(null);
             }}>
               <Trash2 size={16} />
-              {isSuperAdmin ? 'Delete' : 'Request Deletion'}
+              {canDeleteDirectly ? 'Delete' : 'Request Deletion'}
             </button>
           </div>
         </div>
@@ -623,6 +657,13 @@ export default function HomePage() {
         type={requestModal.type}
         registerName={requestModal.regName || 'Unknown Register'}
         registerId={requestModal.regId}
+      />
+
+      {/* Onboarding Walkthrough Wizard */}
+      <OnboardingWizard
+        isOpen={showOnboarding}
+        onClose={handleCloseOnboarding}
+        userName={user?.name || 'User'}
       />
     </div>
   );

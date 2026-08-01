@@ -21,7 +21,7 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ onClose, onExport, columns, hiddenColumns, selectedRowCount, totalRowCount }: ExportModalProps) {
-  const [format, setFormat] = useState<ExportFormat>('pdf');
+  const [format, setFormat] = useState<ExportFormat>('excel');
   const [includeHeading, setIncludeHeading] = useState(true);
   const [includeDateTime, setIncludeDateTime] = useState(true);
   const [exportRows, setExportRows] = useState<'all' | 'selected'>(selectedRowCount > 0 ? 'selected' : 'all');
@@ -99,22 +99,6 @@ export function ExportModal({ onClose, onExport, columns, hiddenColumns, selecte
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
               <div 
-                onClick={() => setFormat('pdf')}
-                style={{
-                  padding: '14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: 'all 0.2s',
-                  border: `2px solid ${format === 'pdf' ? 'var(--primary)' : 'var(--border)'}`,
-                  background: format === 'pdf' ? 'rgba(0, 45, 93, 0.05)' : '#fff',
-                }}
-              >
-                <div style={{ color: format === 'pdf' ? 'var(--primary)' : 'var(--muted)' }}>
-                  <FileText size={22} />
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 600, color: format === 'pdf' ? 'var(--primary)' : 'var(--text-color)', fontSize: '14px' }}>PDF Document</div>
-                </div>
-              </div>
-              
-              <div 
                 onClick={() => setFormat('excel')}
                 style={{
                   padding: '14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: 'all 0.2s',
@@ -127,6 +111,22 @@ export function ExportModal({ onClose, onExport, columns, hiddenColumns, selecte
                 </div>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ fontWeight: 600, color: format === 'excel' ? 'var(--primary)' : 'var(--text-color)', fontSize: '14px' }}>Excel Sheet</div>
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setFormat('pdf')}
+                style={{
+                  padding: '14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: 'all 0.2s',
+                  border: `2px solid ${format === 'pdf' ? 'var(--primary)' : 'var(--border)'}`,
+                  background: format === 'pdf' ? 'rgba(0, 45, 93, 0.05)' : '#fff',
+                }}
+              >
+                <div style={{ color: format === 'pdf' ? 'var(--primary)' : 'var(--muted)' }}>
+                  <FileText size={22} />
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 600, color: format === 'pdf' ? 'var(--primary)' : 'var(--text-color)', fontSize: '14px' }}>PDF Document</div>
                 </div>
               </div>
             </div>

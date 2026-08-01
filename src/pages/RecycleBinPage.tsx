@@ -181,11 +181,37 @@ export default function RecycleBinPage({ isAdminPanel = false }: RecycleBinPageP
     <div className="rbin-page">
       {/* Header */}
       <div className="rbin-header">
-        {!isPageAdmin && (
-          <button className="rbin-back" onClick={() => navigate('/')}>
-            <ArrowLeft size={18} />
-          </button>
-        )}
+        <button 
+          onClick={() => navigate('/')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, var(--surface) 0%, var(--bg-secondary) 100%)',
+            color: 'var(--navy)',
+            fontWeight: 700,
+            fontSize: '13.5px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateX(-2px)';
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.color = 'var(--accent)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.borderColor = 'var(--border)';
+            e.currentTarget.style.color = 'var(--navy)';
+          }}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to Workspace</span>
+        </button>
         <div className="rbin-header-text">
           <h1>Recycle Bin</h1>
           <p>{isPageAdmin ? 'Restore or permanently delete items' : 'View or restore deleted rows & columns'}</p>

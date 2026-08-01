@@ -1,5 +1,66 @@
 import { query } from '../db-lib/db.js';
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
+
+// Helper to send login notification email to user
+async function sendLoginNotificationEmail(userEmail, userName, role) {
+  try {
+    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    const loginTime = new Date().toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || `"Easy Admin Alert" <no-reply@sjvps.com>`,
+      to: userEmail,
+      subject: `🔒 Security Alert: Account Login Detected (${userName})`,
+      text: `Hello ${userName},\n\nWe detected a new login to your AG Account (${userEmail}) at ${loginTime}.\nRole: ${role}\n\nIf this was you, no action is required. If you did not recognize this activity, please contact your administrator immediately.`,
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <div style="background: #1a73e8; color: white; padding: 8px 12px; border-radius: 8px; font-weight: 800; font-size: 16px;">AG</div>
+            <h2 style="margin: 0; color: #0f172a; font-size: 20px; font-weight: 700;">Account Login Notification</h2>
+          </div>
+          <p style="color: #334155; font-size: 15px; line-height: 1.5;">Hello <strong>${userName}</strong>,</p>
+          <p style="color: #334155; font-size: 14.5px; line-height: 1.5;">A successful login to your AG account was registered with the following details:</p>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #334155;">
+              <tr><td style="padding: 4px 0; color: #64748b;">User:</td><td style="padding: 4px 0; font-weight: 600;">${userName} (${userEmail})</td></tr>
+              <tr><td style="padding: 4px 0; color: #64748b;">Role:</td><td style="padding: 4px 0; font-weight: 600; text-transform: capitalize;">${role}</td></tr>
+              <tr><td style="padding: 4px 0; color: #64748b;">Time:</td><td style="padding: 4px 0; font-weight: 600;">${loginTime} (IST)</td></tr>
+            </table>
+          </div>
+
+          <p style="color: #64748b; font-size: 13px; line-height: 1.5;">If this was you, you can safely ignore this email. If you did not initiate this login, please notify your administrator right away.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0 16px;" />
+          <p style="color: #94a3b8; font-size: 11.5px; margin: 0;">AG Trust Workspace Security Team • Automatic System Notification</p>
+        </div>
+      `
+    };
+
+    if (smtpUser && smtpPass) {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass }
+      });
+      await transporter.sendMail(mailOptions);
+      console.log(`[Email Alert Sent] Login notification sent to ${userEmail}`);
+    } else {
+      console.log(`[Email Alert Prepared] Login email notification ready for ${userEmail}:`, mailOptions.subject);
+    }
+  } catch (err) {
+    console.error('[Email Notification Error]', err.message);
+  }
+}
 
 // Helper to hash password matching the client-side SHA-256 algorithm
 function hashPassword(password) {
@@ -44,6 +105,7 @@ function formatUser(row) {
     phone: row.phone || '',
     createdAt: row.created_at,
     lastLogin: row.last_login,
+    trialEndsAt: row.trial_ends_at || null,
     permissions: row.permissions || {}
   };
 }
@@ -77,6 +139,16 @@ function formatRegister(row) {
   };
 }
 
+// Extract authenticated user from Bearer token
+function getAuthUser(req) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace('Bearer ', '');
+  if (!token) return null;
+  try {
+    return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -90,11 +162,182 @@ export default async function handler(req, res) {
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = url.pathname;
+  let pathname = url.pathname;
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
   const method = req.method;
 
   try {
+    // Auto-migrate trial_ends_at column on users table if missing and upgrade standard users to full workspace admin
+    if (!globalThis._usersTrialColumnMigrated) {
+      try {
+        await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;');
+        await query(`
+          UPDATE users 
+          SET role = 'sheet_admin',
+              permissions = jsonb_build_object(
+                'canView', true,
+                'canEdit', true,
+                'canDownload', true,
+                'isAdmin', false,
+                'fullSheetAccess', true,
+                'canCreateSheets', true,
+                'canSelectBackDates', true
+              )
+          WHERE role = 'user';
+        `).catch(() => {});
+        globalThis._usersTrialColumnMigrated = true;
+      } catch (mErr) {
+        console.error('Failed to auto-migrate users table trial_ends_at column:', mErr);
+      }
+    }
+
     // ─── AUTHENTICATION ROUTES ───────────────────────────────────────────────
+
+    // POST /api/auth/signup (Public user self-registration with 1-Month Free Trial)
+    if (pathname === '/api/auth/signup' && method === 'POST') {
+      const data = await getRequestBody(req);
+      const email = (data.email || '').toLowerCase().trim();
+      const name = (data.name || '').trim();
+      const password = data.password || '';
+      const phone = data.phone || '';
+
+      if (!name || !email || !password) {
+        return sendError(res, 400, 'Name, email, and password are required');
+      }
+
+      const check = await query('SELECT 1 FROM users WHERE LOWER(email) = $1', [email]);
+      if (check.rowCount > 0) return sendError(res, 400, 'An account with this email already exists');
+
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      const hash = hashPassword(password);
+      const role = 'sheet_admin';
+      const permissions = {
+        canView: true,
+        canEdit: true,
+        canDownload: true,
+        isAdmin: false,
+        fullSheetAccess: true,
+        canCreateSheets: true,
+        canSelectBackDates: true,
+      };
+
+      // Set 1-Month (30 days) Free Trial from now
+      const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      await query(`
+        INSERT INTO users (id, name, email, password_hash, role, status, phone, created_at, trial_ends_at, permissions)
+        VALUES ($1, $2, $3, $4, $5, 'active', $6, NOW(), $7, $8)
+      `, [id, name, email, hash, role, phone, trialEndsAt, JSON.stringify(permissions)]);
+
+      // Create a default business for the new user so they can immediately create registers
+      const businessId = Date.now() + Math.floor(Math.random() * 100000);
+      await query('INSERT INTO businesses (id, name, owner_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING', [businessId, `${name}'s Workspace`, id]);
+
+      // Activity log
+      const logId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      await query(`
+        INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp)
+        VALUES ($1, $2, $3, 'signup', $4, NOW())
+      `, [logId, id, name, `New user registered: ${email} (1-Month Free Trial until ${new Date(trialEndsAt).toLocaleDateString()})`]);
+
+      // Notify Admins
+      try {
+        const adminUsers = await query("SELECT id FROM users WHERE role = 'admin' OR role = 'superadmin'");
+        for (const adminRow of adminUsers.rows) {
+          const notifId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+          await query(`
+            INSERT INTO notifications (id, user_id, title, message, type, meta, is_read, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
+          `, [
+            notifId,
+            adminRow.id,
+            'New User Registration',
+            `New user ${name} (${email}) signed up with a 1-Month Free Trial`,
+            'info',
+            JSON.stringify({ userId: id, userName: name, userEmail: email, trialEndsAt })
+          ]);
+        }
+      } catch (e) {}
+
+      const freshUserRes = await query('SELECT * FROM users WHERE id = $1', [id]);
+      const freshUser = freshUserRes.rows[0];
+
+      const token = Buffer.from(JSON.stringify({
+        id: freshUser.id,
+        email: freshUser.email,
+        role: freshUser.role,
+        ts: Date.now()
+      })).toString('base64');
+
+      return sendJson(res, 201, {
+        token,
+        user: formatUser(freshUser),
+        message: 'Account created successfully with a 1-Month Free Trial!'
+      });
+    }
+
+    // POST /api/auth/google (Google OAuth Login/Signup)
+    if (pathname === '/api/auth/google' && method === 'POST') {
+      const data = await getRequestBody(req);
+      const email = (data.email || '').toLowerCase().trim();
+      const name = (data.name || '').trim() || 'Google User';
+
+      if (!email) {
+        return sendError(res, 400, 'Google email is required');
+      }
+
+      let resUser = await query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
+      let user;
+
+      if (resUser.rowCount === 0) {
+        // Create new user for Google Sign-In with 1-Month Free Trial
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+        const role = 'sheet_admin';
+        const permissions = {
+          canView: true,
+          canEdit: true,
+          canDownload: true,
+          isAdmin: false,
+          fullSheetAccess: true,
+          canCreateSheets: true,
+          canSelectBackDates: true,
+        };
+        const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        await query(`
+          INSERT INTO users (id, name, email, password_hash, role, status, phone, created_at, trial_ends_at, permissions)
+          VALUES ($1, $2, $3, '', $4, 'active', '', NOW(), $5, $6)
+        `, [id, name, email, role, trialEndsAt, JSON.stringify(permissions)]);
+
+        // Create default business workspace for this user
+        const businessId = Date.now() + Math.floor(Math.random() * 100000);
+        await query('INSERT INTO businesses (id, name, owner_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING', [businessId, `${name}'s Workspace`, id]);
+
+        const freshUserRes = await query('SELECT * FROM users WHERE id = $1', [id]);
+        user = freshUserRes.rows[0];
+      } else {
+        user = resUser.rows[0];
+        if (user.status === 'inactive') {
+          return sendError(res, 403, 'Account is deactivated. Contact your administrator.');
+        }
+        await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+      }
+
+      const token = Buffer.from(JSON.stringify({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        ts: Date.now()
+      })).toString('base64');
+
+      return sendJson(res, 200, {
+        token,
+        user: formatUser(user),
+        message: 'Signed in with Google successfully!'
+      });
+    }
 
     // POST /api/auth/login
     if (pathname === '/api/auth/login' && method === 'POST') {
@@ -123,6 +366,32 @@ export default async function handler(req, res) {
         INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp)
         VALUES ($1, $2, $3, 'login', $4, NOW())
       `, [logId, user.id, user.name, `User logged in: ${user.email}`]);
+
+      // 1. Notify Admin Panel: Add in-app notification for all admin / superadmin users
+      try {
+        const adminUsers = await query("SELECT id FROM users WHERE role = 'admin' OR role = 'superadmin'");
+        for (const adminRow of adminUsers.rows) {
+          const notifId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+          await query(`
+            INSERT INTO notifications (id, user_id, title, message, type, meta, is_read, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
+          `, [
+            notifId,
+            adminRow.id,
+            'User Login Alert',
+            `User ${user.name} (${user.email}) logged into the system`,
+            'info',
+            JSON.stringify({ userId: user.id, userName: user.name, userEmail: user.email, role: user.role, event: 'login' })
+          ]);
+        }
+      } catch (notifErr) {
+        console.error('Failed to create admin login notifications:', notifErr);
+      }
+
+      // 2. Send email notification to user's email address
+      sendLoginNotificationEmail(user.email, user.name, user.role).catch(err => {
+        console.error('Email dispatch error on login:', err);
+      });
 
       // Generate stateless token
       const token = Buffer.from(JSON.stringify({
@@ -184,6 +453,7 @@ export default async function handler(req, res) {
         const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
         const resUser = await query('SELECT * FROM users WHERE id = $1', [decoded.id]);
         if (resUser.rowCount === 0) return sendError(res, 401, 'User not found');
+        await query('UPDATE users SET last_login = NOW() WHERE id = $1', [decoded.id]).catch(() => {});
         return sendJson(res, 200, { user: formatUser(resUser.rows[0]) });
       } catch (e) {
         return sendError(res, 401, 'Invalid token');
@@ -259,6 +529,56 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { message: 'User updated' });
     }
 
+    // PUT /api/auth/users/:id/extend-trial (Admin extend user trial date)
+    const extendTrialMatch = pathname.match(/^\/api\/auth\/users\/([a-zA-Z0-9]+)\/extend-trial$/);
+    if (extendTrialMatch && method === 'PUT') {
+      const userId = extendTrialMatch[1];
+      const { newTrialEndsAt, extensionDays } = await getRequestBody(req);
+
+      let targetDateIso = newTrialEndsAt;
+      if (!targetDateIso && extensionDays) {
+        const currentRes = await query('SELECT trial_ends_at FROM users WHERE id = $1', [userId]);
+        const currentTrial = currentRes.rows[0]?.trial_ends_at;
+        const baseDate = (currentTrial && new Date(currentTrial) > new Date()) ? new Date(currentTrial) : new Date();
+        targetDateIso = new Date(baseDate.getTime() + extensionDays * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      if (!targetDateIso) {
+        return sendError(res, 400, 'Valid newTrialEndsAt date or extensionDays is required');
+      }
+
+      await query('UPDATE users SET trial_ends_at = $1 WHERE id = $2', [targetDateIso, userId]);
+
+      const formattedDate = new Date(targetDateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      // Send in-app notification to user
+      const notifId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      await query(`
+        INSERT INTO notifications (id, user_id, title, message, type, meta, is_read, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
+      `, [
+        notifId,
+        userId,
+        'Trial Period Extended!',
+        `Your Easy Records trial has been extended until ${formattedDate}. Enjoy full access!`,
+        'success',
+        JSON.stringify({ trialEndsAt: targetDateIso })
+      ]).catch(() => {});
+
+      // Log activity
+      const logId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      await query(`
+        INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp)
+        VALUES ($1, $2, 'Admin', 'extend_trial', $3, NOW())
+      `, [logId, userId, `Extended trial for user ID ${userId} to ${formattedDate}`]).catch(() => {});
+
+      const updatedUserRes = await query('SELECT * FROM users WHERE id = $1', [userId]);
+      return sendJson(res, 200, {
+        user: formatUser(updatedUserRes.rows[0]),
+        message: `Trial successfully extended until ${formattedDate}`
+      });
+    }
+
     // PUT /api/auth/users/:id/permissions
     const permMatch = pathname.match(/^\/api\/auth\/users\/([a-zA-Z0-9]+)\/permissions$/);
     if (permMatch && method === 'PUT') {
@@ -277,23 +597,37 @@ export default async function handler(req, res) {
 
     // ─── BUSINESSES & FOLDERS ───────────────────────────────────────────────
 
-    // GET /api/businesses
+    // GET /api/businesses (secured: each user sees ONLY their own businesses; admin monitoring can pass ?all=true)
     if (pathname === '/api/businesses' && method === 'GET') {
-      const result = await query('SELECT * FROM businesses ORDER BY name ASC');
+      const authUser = getAuthUser(req);
+      const fetchAll = url.searchParams.get('all') === 'true';
+      let result;
+      if (authUser && fetchAll && (authUser.role === 'admin' || authUser.role === 'superadmin')) {
+        // Admin monitoring console sees ALL businesses when ?all=true
+        result = await query('SELECT * FROM businesses ORDER BY name ASC, id ASC');
+      } else if (authUser) {
+        // Every user (including admins in workspace mode) sees strictly THEIR OWN businesses
+        result = await query('SELECT * FROM businesses WHERE owner_id = $1 ORDER BY name ASC, id ASC', [authUser.id]);
+      } else {
+        // No auth — return empty
+        return sendJson(res, 200, []);
+      }
       return sendJson(res, 200, result.rows.map(r => ({
         id: Number(r.id),
         name: r.name,
-        ownerId: Number(r.owner_id),
+        ownerId: r.owner_id,
         createdAt: r.created_at
       })));
     }
 
-    // POST /api/businesses
+    // POST /api/businesses (secured: owner_id = authenticated user)
     if (pathname === '/api/businesses' && method === 'POST') {
+      const authUser = getAuthUser(req);
+      if (!authUser) return sendError(res, 401, 'Authentication required');
       const { name } = await getRequestBody(req);
       const id = Date.now();
-      await query('INSERT INTO businesses (id, name, owner_id, created_at) VALUES ($1, $2, 1, NOW())', [id, name]);
-      return sendJson(res, 201, { id, name, ownerId: 1 });
+      await query('INSERT INTO businesses (id, name, owner_id, created_at) VALUES ($1, $2, $3, NOW())', [id, name, authUser.id]);
+      return sendJson(res, 201, { id, name, ownerId: authUser.id });
     }
 
     // GET /api/folders
@@ -352,6 +686,7 @@ export default async function handler(req, res) {
     if (pathname === '/api/registers' && method === 'POST') {
       const data = await getRequestBody(req);
       const id = Date.now();
+      const createdAt = new Date().toISOString();
       await query(`
         INSERT INTO registers (
           id, business_id, folder_id, name, icon, icon_color, category, template, 
@@ -370,7 +705,19 @@ export default async function handler(req, res) {
         JSON.stringify(data.pages || []),
         JSON.stringify(data.sharedWith || [])
       ]);
-      return sendJson(res, 201, { id, name: data.name });
+      return sendJson(res, 201, {
+        id,
+        businessId: Number(data.businessId),
+        folderId: data.folderId ? Number(data.folderId) : undefined,
+        name: data.name,
+        icon: data.icon || '',
+        iconColor: data.iconColor || '',
+        category: data.category || '',
+        template: data.template || '',
+        createdAt,
+        updatedAt: createdAt,
+        entryCount: 0
+      });
     }
 
     // GET /api/registers/:id/columns
@@ -1195,8 +1542,13 @@ export default async function handler(req, res) {
             register_name TEXT NOT NULL,
             search_query TEXT,
             filters TEXT NOT NULL,
+            summary_column_id BIGINT,
             created_at TIMESTAMP DEFAULT NOW()
           )
+        `);
+        // Ensure the column exists on existing installations
+        await query(`
+          ALTER TABLE saved_register_shortcuts ADD COLUMN IF NOT EXISTS summary_column_id BIGINT;
         `);
         globalThis._savedShortcutsTableCreated = true;
       } catch (e) {
@@ -1273,6 +1625,58 @@ export default async function handler(req, res) {
       const shortcutId = savedShortcutMatch[1];
       await query('DELETE FROM saved_register_shortcuts WHERE id = $1', [shortcutId]);
       return sendJson(res, 200, { message: 'Saved shortcut deleted' });
+    }
+
+    // ─── DASHBOARD CONFIGURATION ─────────────────────────────────────────────
+
+    // Auto-create table if needed (runs once per cold start)
+    if (pathname.startsWith('/api/dashboard-config') && !globalThis._dashboardConfigTableCreated) {
+      try {
+        await query(`
+          CREATE TABLE IF NOT EXISTS dashboard_configurations (
+            business_id BIGINT PRIMARY KEY,
+            configured_sum_metrics TEXT NOT NULL,
+            shortcuts_order TEXT NOT NULL
+          )
+        `);
+        globalThis._dashboardConfigTableCreated = true;
+      } catch (e) {
+        console.error('Failed to auto-create dashboard_configurations table:', e);
+      }
+    }
+
+    // GET /api/dashboard-config?businessId=X
+    if (pathname === '/api/dashboard-config' && method === 'GET') {
+      const businessId = parseBigInt(url.searchParams.get('businessId'));
+      if (!businessId) return sendError(res, 400, 'businessId is required');
+      const result = await query('SELECT * FROM dashboard_configurations WHERE business_id = $1', [businessId]);
+      if (result.rowCount === 0) {
+        return sendJson(res, 200, { configuredSumMetrics: [], shortcutsOrder: [] });
+      }
+      const row = result.rows[0];
+      return sendJson(res, 200, {
+        configuredSumMetrics: typeof row.configured_sum_metrics === 'string' ? JSON.parse(row.configured_sum_metrics) : row.configured_sum_metrics,
+        shortcutsOrder: typeof row.shortcuts_order === 'string' ? JSON.parse(row.shortcuts_order) : row.shortcuts_order
+      });
+    }
+
+    // POST /api/dashboard-config
+    if (pathname === '/api/dashboard-config' && method === 'POST') {
+      const data = await getRequestBody(req);
+      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      
+      const metricsJson = JSON.stringify(data.configuredSumMetrics || []);
+      const orderJson = JSON.stringify(data.shortcutsOrder || []);
+
+      await query(`
+        INSERT INTO dashboard_configurations (business_id, configured_sum_metrics, shortcuts_order)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (business_id) DO UPDATE SET
+          configured_sum_metrics = EXCLUDED.configured_sum_metrics,
+          shortcuts_order = EXCLUDED.shortcuts_order
+      `, [data.businessId, metricsJson, orderJson]);
+
+      return sendJson(res, 200, { message: 'Dashboard configuration updated successfully' });
     }
 
     // If no route matches, return 404
