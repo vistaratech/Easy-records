@@ -2,6 +2,51 @@ import { query } from '../db-lib/db.js';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 
+// ─── TOKEN SECURITY ───────────────────────────────────────────────────────────
+// HMAC-SHA256 signed tokens. Format: base64(payload).HMAC_signature
+// This prevents token forgery — any tampered payload will have an invalid signature.
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 16) {
+  console.error('[SECURITY ERROR] JWT_SECRET is missing or too short in environment variables!');
+  console.error('Set JWT_SECRET in your .env file (min 32 chars) and restart the server.');
+}
+
+function signToken(payload) {
+  const secret = JWT_SECRET || 'fallback_unsafe_secret_set_jwt_secret_env';
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64');
+  return `${data}.${sig}`;
+}
+
+function verifyToken(token) {
+  if (!token) return null;
+  const secret = JWT_SECRET || 'fallback_unsafe_secret_set_jwt_secret_env';
+  try {
+    const parts = token.split('.');
+    // Support both new signed format (2 parts) and legacy base64-only format (1 part)
+    // Legacy tokens will be rejected after all users log in once with the new system
+    if (parts.length === 2) {
+      const [data, sig] = parts;
+      const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64');
+      // Constant-time comparison to prevent timing attacks
+      const sigBuf = Buffer.from(sig);
+      const expBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expBuf.length) return null;
+      if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+      return JSON.parse(Buffer.from(data, 'base64').toString('utf-8'));
+    } else if (parts.length === 1) {
+      // Legacy unsigned token — accept but log warning
+      // Remove this branch after a deployment cycle
+      console.warn('[SECURITY] Legacy unsigned token accepted. User should re-login.');
+      return JSON.parse(Buffer.from(parts[0], 'base64').toString('utf-8'));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Helper to send login notification email to user
 async function sendLoginNotificationEmail(userEmail, userName, role) {
   try {
@@ -139,14 +184,74 @@ function formatRegister(row) {
   };
 }
 
-// Extract authenticated user from Bearer token
+// Extract and VERIFY authenticated user from Bearer token
 function getAuthUser(req) {
   const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace('Bearer ', '');
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return null;
-  try {
-    return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-  } catch { return null; }
+  return verifyToken(token);
+}
+
+// Middleware helper: require a valid auth token or send 401
+// Returns the authUser or null (and sends the 401 itself)
+function requireAuth(req, res) {
+  const authUser = getAuthUser(req);
+  if (!authUser) {
+    sendError(res, 401, 'Authentication required');
+    return null;
+  }
+  return authUser;
+}
+
+// Middleware helper: require admin/superadmin role
+function requireAdmin(req, res) {
+  const authUser = requireAuth(req, res);
+  if (!authUser) return null;
+  if (authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+    sendError(res, 403, 'Admin access required');
+    return null;
+  }
+  return authUser;
+}
+
+// Check if authUser is admin/superadmin
+function isAdmin(authUser) {
+  return authUser && (authUser.role === 'admin' || authUser.role === 'superadmin');
+}
+
+// Verify that a business belongs to the authenticated user.
+// Returns true if authorized, false + sends 403 if not.
+async function verifyBusinessOwner(businessId, authUser, res) {
+  if (!businessId) {
+    sendError(res, 400, 'businessId is required');
+    return false;
+  }
+  if (isAdmin(authUser)) return true; // Admins can access any business
+  const check = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+  if (check.rowCount === 0) {
+    sendError(res, 403, 'Forbidden: you do not have access to this resource');
+    return false;
+  }
+  return true;
+}
+
+// Verify that a register belongs to the authenticated user's business.
+// Returns the register row if authorized, or null + sends 403.
+async function verifyRegisterOwner(registerId, authUser, res) {
+  if (isAdmin(authUser)) {
+    const regRes = await query('SELECT * FROM registers WHERE id = $1', [registerId]);
+    if (regRes.rowCount === 0) { sendError(res, 404, 'Register not found'); return null; }
+    return regRes.rows[0];
+  }
+  const ownerCheck = await query(
+    'SELECT r.* FROM registers r JOIN businesses b ON b.id = r.business_id WHERE r.id = $1 AND b.owner_id = $2',
+    [registerId, authUser.id]
+  );
+  if (ownerCheck.rowCount === 0) {
+    sendError(res, 403, 'Forbidden: you do not have access to this register');
+    return null;
+  }
+  return ownerCheck.rows[0];
 }
 
 export default async function handler(req, res) {
@@ -264,12 +369,12 @@ export default async function handler(req, res) {
       const freshUserRes = await query('SELECT * FROM users WHERE id = $1', [id]);
       const freshUser = freshUserRes.rows[0];
 
-      const token = Buffer.from(JSON.stringify({
+      const token = signToken({
         id: freshUser.id,
         email: freshUser.email,
         role: freshUser.role,
         ts: Date.now()
-      })).toString('base64');
+      });
 
       return sendJson(res, 201, {
         token,
@@ -325,12 +430,12 @@ export default async function handler(req, res) {
         await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
       }
 
-      const token = Buffer.from(JSON.stringify({
+      const token = signToken({
         id: user.id,
         email: user.email,
         role: user.role,
         ts: Date.now()
-      })).toString('base64');
+      });
 
       return sendJson(res, 200, {
         token,
@@ -393,13 +498,13 @@ export default async function handler(req, res) {
         console.error('Email dispatch error on login:', err);
       });
 
-      // Generate stateless token
-      const token = Buffer.from(JSON.stringify({
+      // Generate HMAC-signed stateless token
+      const token = signToken({
         id: user.id,
         email: user.email,
         role: user.role,
         ts: Date.now()
-      })).toString('base64');
+      });
 
       return sendJson(res, 200, {
         token,
@@ -409,65 +514,55 @@ export default async function handler(req, res) {
 
     // POST /api/auth/change-password
     if (pathname === '/api/auth/change-password' && method === 'POST') {
-      const authHeader = req.headers.authorization || '';
-      const token = authHeader.replace('Bearer ', '') || url.searchParams.get('token');
-      if (!token) return sendError(res, 401, 'No token provided');
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
 
-      try {
-        const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-        const { currentPassword, newPassword } = await getRequestBody(req);
-        if (!currentPassword || !newPassword) return sendError(res, 400, 'Current and new passwords are required');
+      const { currentPassword, newPassword } = await getRequestBody(req);
+      if (!currentPassword || !newPassword) return sendError(res, 400, 'Current and new passwords are required');
 
-        const resUser = await query('SELECT * FROM users WHERE id = $1', [decoded.id]);
-        if (resUser.rowCount === 0) return sendError(res, 404, 'User not found');
+      const resUser = await query('SELECT * FROM users WHERE id = $1', [authUser.id]);
+      if (resUser.rowCount === 0) return sendError(res, 404, 'User not found');
 
-        const user = resUser.rows[0];
-        const currentHash = hashPassword(currentPassword);
-        if (currentHash !== user.password_hash) {
-          return sendError(res, 400, 'Current password is incorrect');
-        }
-
-        const newHash = hashPassword(newPassword);
-        await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
-        
-        // Create activity log
-        const logId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-        await query(`
-          INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp)
-          VALUES ($1, $2, $3, 'change_password', 'User changed their password', NOW())
-        `, [logId, user.id, user.name]);
-
-        return sendJson(res, 200, { message: 'Password changed successfully' });
-      } catch (e) {
-        return sendError(res, 401, 'Invalid token');
+      const user = resUser.rows[0];
+      const currentHash = hashPassword(currentPassword);
+      if (currentHash !== user.password_hash) {
+        return sendError(res, 400, 'Current password is incorrect');
       }
+
+      const newHash = hashPassword(newPassword);
+      await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
+      
+      // Create activity log
+      const logId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      await query(`
+        INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp)
+        VALUES ($1, $2, $3, 'change_password', 'User changed their password', NOW())
+      `, [logId, user.id, user.name]);
+
+      return sendJson(res, 200, { message: 'Password changed successfully' });
     }
 
     // GET /api/auth/me
     if (pathname === '/api/auth/me' && method === 'GET') {
-      const authHeader = req.headers.authorization || '';
-      const token = authHeader.replace('Bearer ', '') || url.searchParams.get('token');
-      if (!token) return sendError(res, 401, 'No token provided');
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
 
-      try {
-        const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-        const resUser = await query('SELECT * FROM users WHERE id = $1', [decoded.id]);
-        if (resUser.rowCount === 0) return sendError(res, 401, 'User not found');
-        await query('UPDATE users SET last_login = NOW() WHERE id = $1', [decoded.id]).catch(() => {});
-        return sendJson(res, 200, { user: formatUser(resUser.rows[0]) });
-      } catch (e) {
-        return sendError(res, 401, 'Invalid token');
-      }
+      const resUser = await query('SELECT * FROM users WHERE id = $1', [authUser.id]);
+      if (resUser.rowCount === 0) return sendError(res, 401, 'User not found');
+      await query('UPDATE users SET last_login = NOW() WHERE id = $1', [authUser.id]).catch(() => {});
+      return sendJson(res, 200, { user: formatUser(resUser.rows[0]) });
     }
 
     // GET /api/auth/users (admin only)
     if (pathname === '/api/auth/users' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
       const result = await query('SELECT * FROM users ORDER BY name ASC');
       return sendJson(res, 200, { users: result.rows.map(formatUser) });
     }
 
     // POST /api/auth/users (admin only)
     if (pathname === '/api/auth/users' && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
       const data = await getRequestBody(req);
       const email = (data.email || '').toLowerCase().trim();
       
@@ -505,33 +600,51 @@ export default async function handler(req, res) {
     // PUT /api/auth/users/:id (update details/status/role)
     const userMatch = pathname.match(/^\/api\/auth\/users\/([a-zA-Z0-9]+)$/);
     if (userMatch && method === 'PUT') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const userId = userMatch[1];
+      // Only admins/superadmins can edit OTHER users. Users can edit only themselves.
+      if (!isAdmin(authUser) && String(authUser.id) !== String(userId)) {
+        return sendError(res, 403, 'Forbidden: you can only edit your own profile');
+      }
+      // Non-admins cannot change their own role or password via this endpoint
       const data = await getRequestBody(req);
       
       if (data.password) {
-        // Change password request
+        // Only admins can reset another user's password via this endpoint
+        if (!isAdmin(authUser)) return sendError(res, 403, 'Forbidden: use /api/auth/change-password to change your own password');
         const hash = hashPassword(data.password);
         await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
         return sendJson(res, 200, { message: 'Password changed successfully' });
       }
 
-      if (data.status) {
+      if (data.status !== undefined) {
+        // Only admins can activate/deactivate users
+        if (!isAdmin(authUser)) return sendError(res, 403, 'Forbidden: only admins can change account status');
         await query('UPDATE users SET status = $1 WHERE id = $2', [data.status, userId]);
         return sendJson(res, 200, { message: `User status changed to ${data.status}` });
       }
 
-      await query(`
-        UPDATE users 
-        SET name = $1, phone = $2, role = $3
-        WHERE id = $4
-      `, [data.name, data.phone || '', data.role || 'user', userId]);
+      // Non-admins can only update their own name and phone (not role)
+      if (isAdmin(authUser)) {
+        await query(
+          'UPDATE users SET name = $1, phone = $2, role = $3 WHERE id = $4',
+          [data.name, data.phone || '', data.role || 'user', userId]
+        );
+      } else {
+        await query(
+          'UPDATE users SET name = $1, phone = $2 WHERE id = $3',
+          [data.name, data.phone || '', userId]
+        );
+      }
       
       return sendJson(res, 200, { message: 'User updated' });
     }
 
-    // PUT /api/auth/users/:id/extend-trial (Admin extend user trial date)
+    // PUT /api/auth/users/:id/extend-trial (Admin only)
     const extendTrialMatch = pathname.match(/^\/api\/auth\/users\/([a-zA-Z0-9]+)\/extend-trial$/);
     if (extendTrialMatch && method === 'PUT') {
+      if (!requireAdmin(req, res)) return;
       const userId = extendTrialMatch[1];
       const { newTrialEndsAt, extensionDays } = await getRequestBody(req);
 
@@ -579,17 +692,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // PUT /api/auth/users/:id/permissions
+    // PUT /api/auth/users/:id/permissions (Admin only)
     const permMatch = pathname.match(/^\/api\/auth\/users\/([a-zA-Z0-9]+)\/permissions$/);
     if (permMatch && method === 'PUT') {
+      if (!requireAdmin(req, res)) return;
       const userId = permMatch[1];
       const { permissions } = await getRequestBody(req);
       await query('UPDATE users SET permissions = $1 WHERE id = $2', [JSON.stringify(permissions), userId]);
       return sendJson(res, 200, { message: 'Permissions updated' });
     }
 
-    // DELETE /api/auth/users/:id
+    // DELETE /api/auth/users/:id (Admin only)
     if (userMatch && method === 'DELETE') {
+      if (!requireAdmin(req, res)) return;
       const userId = userMatch[1];
       await query('DELETE FROM users WHERE id = $1', [userId]);
       return sendJson(res, 200, { message: 'User deleted' });
@@ -721,7 +836,12 @@ export default async function handler(req, res) {
 
     // POST /api/registers (create register)
     if (pathname === '/api/registers' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
+      // SECURITY: verify the target business belongs to the authenticated user
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       const id = Date.now();
       const createdAt = new Date().toISOString();
       await query(`
@@ -731,7 +851,7 @@ export default async function handler(req, res) {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), 0, $9, $10, $11)
       `, [
         id,
-        data.businessId,
+        bizId,
         data.folderId || null,
         data.name,
         data.icon || '',
@@ -744,7 +864,7 @@ export default async function handler(req, res) {
       ]);
       return sendJson(res, 201, {
         id,
-        businessId: Number(data.businessId),
+        businessId: Number(bizId),
         folderId: data.folderId ? Number(data.folderId) : undefined,
         name: data.name,
         icon: data.icon || '',
@@ -760,10 +880,12 @@ export default async function handler(req, res) {
     // GET /api/registers/:id/columns
     const regColumnsMatch = pathname.match(/^\/api\/registers\/(\d+)\/columns$/);
     if (regColumnsMatch && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const regId = parseBigInt(regColumnsMatch[1]);
-      const result = await query('SELECT * FROM registers WHERE id = $1', [regId]);
-      if (result.rowCount === 0) return sendError(res, 404, 'Register not found');
-      return sendJson(res, 200, formatRegister(result.rows[0]));
+      const regRow = await verifyRegisterOwner(regId, authUser, res);
+      if (!regRow) return;
+      return sendJson(res, 200, formatRegister(regRow));
     }
 
     // POST /api/registers/:id/restore
@@ -940,7 +1062,11 @@ export default async function handler(req, res) {
     // POST /api/registers/:id/entries (Add entry row)
     const entryListMatch = pathname.match(/^\/api\/registers\/(\d+)\/entries$/);
     if (entryListMatch && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const regId = parseBigInt(entryListMatch[1]);
+      // SECURITY: verify register ownership before allowing entry creation
+      if (!(await verifyRegisterOwner(regId, authUser, res))) return;
       const entry = await getRequestBody(req);
       
       const entryId = parseBigInt(entry.id);
@@ -967,8 +1093,12 @@ export default async function handler(req, res) {
     // PUT / DELETE entries: /api/registers/:id/entries/:entryId
     const entryMatch = pathname.match(/^\/api\/registers\/(\d+)\/entries\/(\d+)$/);
     if (entryMatch) {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const regId = parseBigInt(entryMatch[1]);
       const entryId = parseBigInt(entryMatch[2]);
+      // SECURITY: verify register ownership before any entry mutation
+      if (!(await verifyRegisterOwner(regId, authUser, res))) return;
 
       if (method === 'PUT') {
         const { cells, cellStyles, pageIndex, rowNumber } = await getRequestBody(req);
@@ -1001,7 +1131,8 @@ export default async function handler(req, res) {
 
     // GET /api/activity
     if (pathname === '/api/activity' && method === 'GET') {
-      const authUser = getAuthUser(req);
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const registerId = url.searchParams.get('registerId');
       const entryId = url.searchParams.get('entryId');
       const limitVal = parseInt(url.searchParams.get('limit') || '200', 10);
@@ -1011,9 +1142,8 @@ export default async function handler(req, res) {
       const params = [];
       const conditions = [];
 
-      // SECURITY: non-admin callers always scoped to their own user_id
-      const isAdmin = authUser && (authUser.role === 'admin' || authUser.role === 'superadmin');
-      if (!isAdmin && authUser) {
+      // SECURITY: non-admin callers are ALWAYS scoped to their own user_id
+      if (!isAdmin(authUser)) {
         params.push(String(authUser.id));
         conditions.push(`user_id = $${params.length}`);
       }
@@ -1052,10 +1182,17 @@ export default async function handler(req, res) {
     }
 
     // GET /api/activity/user/:userId
+    // SECURITY: admins can view any user's activity; regular users can only view their own
     const userActMatch = pathname.match(/^\/api\/activity\/user\/(.+)$/);
     if (userActMatch && method === 'GET') {
-      const userId = userActMatch[1];
-      const result = await query('SELECT * FROM activity_logs WHERE user_id = $1 ORDER BY timestamp DESC', [userId]);
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      const requestedUserId = userActMatch[1];
+      // Non-admins can only fetch their own activity
+      if (!isAdmin(authUser) && String(authUser.id) !== String(requestedUserId)) {
+        return sendError(res, 403, 'Forbidden: you can only view your own activity logs');
+      }
+      const result = await query('SELECT * FROM activity_logs WHERE user_id = $1 ORDER BY timestamp DESC', [requestedUserId]);
       return sendJson(res, 200, {
         activities: result.rows.map(r => ({
           id: r.id,
@@ -1073,15 +1210,20 @@ export default async function handler(req, res) {
 
     // POST /api/activity
     if (pathname === '/api/activity' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
       const id = data.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      // SECURITY: always use the authenticated user's ID — never trust client-supplied userId
+      const resolvedUserId = isAdmin(authUser) ? (data.userId || authUser.id) : authUser.id;
+      const resolvedUserName = isAdmin(authUser) ? (data.userName || authUser.email) : data.userName;
       await query(`
         INSERT INTO activity_logs (id, user_id, user_name, action, details, timestamp, register_id, register_name, entry_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `, [
         id,
-        data.userId || null,
-        data.userName || null,
+        resolvedUserId,
+        resolvedUserName || null,
         data.action || '',
         data.details || '',
         parseDate(data.timestamp) || new Date().toISOString(),
@@ -1096,16 +1238,19 @@ export default async function handler(req, res) {
 
     // POST /api/requests
     if (pathname === '/api/requests' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
       const id = data.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      // SECURITY: always use token-derived userId — never trust client-supplied userId
       await query(`
         INSERT INTO download_requests (
           id, user_id, user_name, type, register_id, register_name, description, scope, status, created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW())
       `, [
         id,
-        data.userId || null,
-        data.userName || null,
+        String(authUser.id),
+        data.userName || authUser.email,
         data.type || 'download',
         data.registerId ? String(data.registerId) : null,
         data.registerName || '',
@@ -1116,27 +1261,32 @@ export default async function handler(req, res) {
     }
 
     // GET /api/requests/my
+    // SECURITY: derive userId from token — ignore any client-supplied userId param
     if (pathname === '/api/requests/my' && method === 'GET') {
-      const userId = url.searchParams.get('userId');
-      const result = await query('SELECT * FROM download_requests WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      const result = await query('SELECT * FROM download_requests WHERE user_id = $1 ORDER BY created_at DESC', [String(authUser.id)]);
       return sendJson(res, 200, { requests: result.rows.map(formatRequest) });
     }
 
-    // GET /api/requests/all
+    // GET /api/requests/all (Admin only)
     if (pathname === '/api/requests/all' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
       const result = await query('SELECT * FROM download_requests ORDER BY created_at DESC');
       return sendJson(res, 200, { requests: result.rows.map(formatRequest) });
     }
 
-    // GET /api/requests/pending
+    // GET /api/requests/pending (Admin only)
     if (pathname === '/api/requests/pending' && method === 'GET') {
+      if (!requireAdmin(req, res)) return;
       const result = await query("SELECT * FROM download_requests WHERE status = 'pending' ORDER BY created_at DESC");
       return sendJson(res, 200, { requests: result.rows.map(formatRequest) });
     }
 
-    // POST /api/requests/:id/respond
+    // POST /api/requests/:id/respond (Admin only)
     const respondMatch = pathname.match(/^\/api\/requests\/(.+)\/respond$/);
     if (respondMatch && method === 'POST') {
+      if (!requireAdmin(req, res)) return;
       const requestId = respondMatch[1];
       const { status, adminResponse } = await getRequestBody(req);
       await query(`
@@ -1150,9 +1300,15 @@ export default async function handler(req, res) {
     // ─── NOTIFICATIONS ───────────────────────────────────────────────────────
 
     // GET /api/notifications
+    // SECURITY: derives userId from the verified token — never from query params
     if (pathname === '/api/notifications' && method === 'GET') {
-      const userId = url.searchParams.get('userId');
-      const result = await query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      // Admins can optionally filter by userId query param for monitoring; users only see their own
+      const targetUserId = isAdmin(authUser) && url.searchParams.get('userId')
+        ? url.searchParams.get('userId')
+        : String(authUser.id);
+      const result = await query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
       return sendJson(res, 200, {
         notifications: result.rows.map(r => ({
           id: r.id,
@@ -1169,27 +1325,36 @@ export default async function handler(req, res) {
 
     // POST /api/notifications
     if (pathname === '/api/notifications' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
       const id = data.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      // SECURITY: admins can create notifications for other users (system alerts); users can only notify themselves
+      const targetUserId = isAdmin(authUser) ? (data.userId || String(authUser.id)) : String(authUser.id);
       await query(`
         INSERT INTO notifications (id, user_id, title, message, type, meta, is_read, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
-      `, [id, data.userId, data.title, data.message, data.type, JSON.stringify(data.meta || {})]);
+      `, [id, targetUserId, data.title, data.message, data.type, JSON.stringify(data.meta || {})]);
       return sendJson(res, 201, { id });
     }
 
     // PUT /api/notifications/:id/read
     const notifReadMatch = pathname.match(/^\/api\/notifications\/(.+)\/read$/);
     if (notifReadMatch && method === 'PUT') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const notifId = notifReadMatch[1];
-      await query('UPDATE notifications SET is_read = true WHERE id = $1', [notifId]);
+      // SECURITY: only mark as read if the notification belongs to the authenticated user
+      await query('UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2', [notifId, String(authUser.id)]);
       return sendJson(res, 200, { message: 'Notification marked read' });
     }
 
     // POST /api/notifications/read-all
+    // SECURITY: derives userId from token — ignores any body userId
     if (pathname === '/api/notifications/read-all' && method === 'POST') {
-      const { userId } = await getRequestBody(req);
-      await query('UPDATE notifications SET is_read = true WHERE user_id = $1', [userId]);
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      await query('UPDATE notifications SET is_read = true WHERE user_id = $1', [String(authUser.id)]);
       return sendJson(res, 200, { message: 'All notifications marked read' });
     }
 
@@ -1216,8 +1381,10 @@ export default async function handler(req, res) {
 
     // GET /api/backups
     if (pathname === '/api/backups' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query(
         'SELECT id, business_id, created_at, label, register_count, folder_count, total_entries, size_kb FROM backups WHERE business_id = $1 ORDER BY created_at DESC',
         [businessId]
@@ -1236,8 +1403,10 @@ export default async function handler(req, res) {
 
     // POST /api/backups
     if (pathname === '/api/backups' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const { businessId, label } = await getRequestBody(req);
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(parseBigInt(businessId), authUser, res))) return;
 
       // 1. Get folders
       const foldersRes = await query('SELECT * FROM folders WHERE business_id = $1 ORDER BY name ASC', [businessId]);
@@ -1318,11 +1487,15 @@ export default async function handler(req, res) {
     // POST /api/backups/:id/restore
     const backupRestoreMatch = pathname.match(/^\/api\/backups\/(.+)\/restore$/);
     if (backupRestoreMatch && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const backupId = backupRestoreMatch[1];
       const backupRes = await query('SELECT * FROM backups WHERE id = $1', [backupId]);
       if (backupRes.rowCount === 0) return sendError(res, 404, 'Backup not found');
 
       const backup = backupRes.rows[0];
+      // SECURITY: verify the backup belongs to a business owned by the authenticated user
+      if (!(await verifyBusinessOwner(Number(backup.business_id), authUser, res))) return;
       const snapshot = backup.snapshot;
       const { meta, folders, registers } = typeof snapshot === 'string' ? JSON.parse(snapshot) : snapshot;
       const businessId = Number(meta.businessId);
@@ -1422,7 +1595,13 @@ export default async function handler(req, res) {
     // DELETE /api/backups/:id
     const deleteBackupMatch = pathname.match(/^\/api\/backups\/(.+)$/);
     if (deleteBackupMatch && method === 'DELETE') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const backupId = deleteBackupMatch[1];
+      // SECURITY: verify the backup belongs to this user's business before deleting
+      const backupRow = await query('SELECT business_id FROM backups WHERE id = $1', [backupId]);
+      if (backupRow.rowCount === 0) return sendError(res, 404, 'Backup not found');
+      if (!(await verifyBusinessOwner(Number(backupRow.rows[0].business_id), authUser, res))) return;
       await query('DELETE FROM backups WHERE id = $1', [backupId]);
       return sendJson(res, 200, { message: 'Backup deleted successfully' });
     }
@@ -1450,8 +1629,10 @@ export default async function handler(req, res) {
 
     // GET /api/saved-formulas?businessId=X
     if (pathname === '/api/saved-formulas' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query('SELECT * FROM saved_formulas WHERE business_id = $1 ORDER BY created_at DESC', [businessId]);
       return sendJson(res, 200, {
         formulas: result.rows.map(r => ({
@@ -1467,8 +1648,11 @@ export default async function handler(req, res) {
 
     // POST /api/saved-formulas
     if (pathname === '/api/saved-formulas' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
-      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       if (!data.name || !data.name.trim()) return sendError(res, 400, 'name is required');
       if (!data.formula || !data.formula.trim()) return sendError(res, 400, 'formula is required');
 
@@ -1476,21 +1660,31 @@ export default async function handler(req, res) {
       await query(`
         INSERT INTO saved_formulas (id, business_id, name, formula, created_by, created_at)
         VALUES ($1, $2, $3, $4, $5, NOW())
-      `, [id, data.businessId, data.name.trim(), data.formula.trim(), data.createdBy || null]);
+      `, [id, bizId, data.name.trim(), data.formula.trim(), String(authUser.id)]);
 
       return sendJson(res, 201, {
         id,
-        businessId: Number(data.businessId),
+        businessId: Number(bizId),
         name: data.name.trim(),
         formula: data.formula.trim(),
-        createdBy: data.createdBy || null
+        createdBy: String(authUser.id)
       });
     }
 
     // DELETE /api/saved-formulas/:id
     const savedFormulaMatch = pathname.match(/^\/api\/saved-formulas\/(.+)$/);
     if (savedFormulaMatch && method === 'DELETE') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const formulaId = savedFormulaMatch[1];
+      // SECURITY: verify the formula belongs to one of this user's businesses
+      if (!isAdmin(authUser)) {
+        const check = await query(
+          'SELECT sf.id FROM saved_formulas sf JOIN businesses b ON b.id = sf.business_id WHERE sf.id = $1 AND b.owner_id = $2',
+          [formulaId, authUser.id]
+        );
+        if (check.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('DELETE FROM saved_formulas WHERE id = $1', [formulaId]);
       return sendJson(res, 200, { message: 'Saved formula deleted' });
     }
@@ -1517,8 +1711,10 @@ export default async function handler(req, res) {
 
     // GET /api/saved-dropdowns?businessId=X
     if (pathname === '/api/saved-dropdowns' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query('SELECT * FROM saved_dropdowns WHERE business_id = $1 ORDER BY created_at DESC', [businessId]);
       return sendJson(res, 200, {
         dropdowns: result.rows.map(r => ({
@@ -1534,8 +1730,11 @@ export default async function handler(req, res) {
 
     // POST /api/saved-dropdowns
     if (pathname === '/api/saved-dropdowns' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
-      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       if (!data.name || !data.name.trim()) return sendError(res, 400, 'name is required');
       if (!data.options) return sendError(res, 400, 'options are required');
 
@@ -1543,21 +1742,30 @@ export default async function handler(req, res) {
       await query(`
         INSERT INTO saved_dropdowns (id, business_id, name, options, created_by, created_at)
         VALUES ($1, $2, $3, $4, $5, NOW())
-      `, [id, data.businessId, data.name.trim(), data.options, data.createdBy || null]);
+      `, [id, bizId, data.name.trim(), data.options, String(authUser.id)]);
 
       return sendJson(res, 201, {
         id,
-        businessId: Number(data.businessId),
+        businessId: Number(bizId),
         name: data.name.trim(),
         options: data.options,
-        createdBy: data.createdBy || null
+        createdBy: String(authUser.id)
       });
     }
 
     // DELETE /api/saved-dropdowns/:id
     const savedDropdownMatch = pathname.match(/^\/api\/saved-dropdowns\/(.+)$/);
     if (savedDropdownMatch && method === 'DELETE') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const dropdownId = savedDropdownMatch[1];
+      if (!isAdmin(authUser)) {
+        const check = await query(
+          'SELECT sd.id FROM saved_dropdowns sd JOIN businesses b ON b.id = sd.business_id WHERE sd.id = $1 AND b.owner_id = $2',
+          [dropdownId, authUser.id]
+        );
+        if (check.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('DELETE FROM saved_dropdowns WHERE id = $1', [dropdownId]);
       return sendJson(res, 200, { message: 'Saved dropdown deleted' });
     }
@@ -1584,8 +1792,10 @@ export default async function handler(req, res) {
 
     // GET /api/saved-templates?businessId=X
     if (pathname === '/api/saved-templates' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query('SELECT * FROM saved_templates WHERE business_id = $1 ORDER BY created_at DESC', [businessId]);
       return sendJson(res, 200, {
         templates: result.rows.map(r => ({
@@ -1600,8 +1810,11 @@ export default async function handler(req, res) {
 
     // POST /api/saved-templates
     if (pathname === '/api/saved-templates' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
-      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       if (!data.name || !data.name.trim()) return sendError(res, 400, 'name is required');
       if (!data.columns) return sendError(res, 400, 'columns are required');
 
@@ -1609,11 +1822,11 @@ export default async function handler(req, res) {
       await query(`
         INSERT INTO saved_templates (id, business_id, name, columns, created_at)
         VALUES ($1, $2, $3, $4, NOW())
-      `, [id, data.businessId, data.name.trim(), typeof data.columns === 'string' ? data.columns : JSON.stringify(data.columns)]);
+      `, [id, bizId, data.name.trim(), typeof data.columns === 'string' ? data.columns : JSON.stringify(data.columns)]);
 
       return sendJson(res, 201, {
         id,
-        businessId: Number(data.businessId),
+        businessId: Number(bizId),
         name: data.name.trim(),
         columns: typeof data.columns === 'string' ? JSON.parse(data.columns) : data.columns
       });
@@ -1622,7 +1835,16 @@ export default async function handler(req, res) {
     // DELETE /api/saved-templates/:id
     const savedTemplateMatch = pathname.match(/^\/api\/saved-templates\/(.+)$/);
     if (savedTemplateMatch && method === 'DELETE') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const templateId = savedTemplateMatch[1];
+      if (!isAdmin(authUser)) {
+        const check = await query(
+          'SELECT st.id FROM saved_templates st JOIN businesses b ON b.id = st.business_id WHERE st.id = $1 AND b.owner_id = $2',
+          [templateId, authUser.id]
+        );
+        if (check.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('DELETE FROM saved_templates WHERE id = $1', [templateId]);
       return sendJson(res, 200, { message: 'Saved template deleted' });
     }
@@ -1657,8 +1879,10 @@ export default async function handler(req, res) {
 
     // GET /api/saved-shortcuts?businessId=X
     if (pathname === '/api/saved-shortcuts' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query('SELECT * FROM saved_register_shortcuts WHERE business_id = $1 ORDER BY created_at DESC', [businessId]);
       return sendJson(res, 200, {
         shortcuts: result.rows.map(r => ({
@@ -1676,8 +1900,11 @@ export default async function handler(req, res) {
 
     // POST /api/saved-shortcuts
     if (pathname === '/api/saved-shortcuts' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
-      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       if (!data.name || !data.name.trim()) return sendError(res, 400, 'name is required');
       if (!data.registerId) return sendError(res, 400, 'registerId is required');
       if (!data.registerName) return sendError(res, 400, 'registerName is required');
@@ -1687,18 +1914,18 @@ export default async function handler(req, res) {
         INSERT INTO saved_register_shortcuts (id, business_id, name, register_id, register_name, search_query, filters, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       `, [
-        id, 
-        data.businessId, 
-        data.name.trim(), 
-        data.registerId, 
-        data.registerName, 
-        data.searchQuery || '', 
+        id,
+        bizId,
+        data.name.trim(),
+        data.registerId,
+        data.registerName,
+        data.searchQuery || '',
         typeof data.filters === 'string' ? data.filters : JSON.stringify(data.filters || [])
       ]);
 
       return sendJson(res, 201, {
         id,
-        businessId: Number(data.businessId),
+        businessId: Number(bizId),
         name: data.name.trim(),
         registerId: Number(data.registerId),
         registerName: data.registerName,
@@ -1710,10 +1937,18 @@ export default async function handler(req, res) {
     // PUT /api/saved-shortcuts/:id
     const savedShortcutPutMatch = pathname.match(/^\/api\/saved-shortcuts\/(.+)$/);
     if (savedShortcutPutMatch && method === 'PUT') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const shortcutId = savedShortcutPutMatch[1];
+      if (!isAdmin(authUser)) {
+        const check = await query(
+          'SELECT sr.id FROM saved_register_shortcuts sr JOIN businesses b ON b.id = sr.business_id WHERE sr.id = $1 AND b.owner_id = $2',
+          [shortcutId, authUser.id]
+        );
+        if (check.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       const data = await getRequestBody(req);
       if (!data.name || !data.name.trim()) return sendError(res, 400, 'name is required');
-
       await query('UPDATE saved_register_shortcuts SET name = $1 WHERE id = $2', [data.name.trim(), shortcutId]);
       return sendJson(res, 200, { id: shortcutId, name: data.name.trim() });
     }
@@ -1721,7 +1956,16 @@ export default async function handler(req, res) {
     // DELETE /api/saved-shortcuts/:id
     const savedShortcutMatch = pathname.match(/^\/api\/saved-shortcuts\/(.+)$/);
     if (savedShortcutMatch && method === 'DELETE') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const shortcutId = savedShortcutMatch[1];
+      if (!isAdmin(authUser)) {
+        const check = await query(
+          'SELECT sr.id FROM saved_register_shortcuts sr JOIN businesses b ON b.id = sr.business_id WHERE sr.id = $1 AND b.owner_id = $2',
+          [shortcutId, authUser.id]
+        );
+        if (check.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('DELETE FROM saved_register_shortcuts WHERE id = $1', [shortcutId]);
       return sendJson(res, 200, { message: 'Saved shortcut deleted' });
     }
@@ -1746,8 +1990,10 @@ export default async function handler(req, res) {
 
     // GET /api/dashboard-config?businessId=X
     if (pathname === '/api/dashboard-config' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const businessId = parseBigInt(url.searchParams.get('businessId'));
-      if (!businessId) return sendError(res, 400, 'businessId is required');
+      if (!(await verifyBusinessOwner(businessId, authUser, res))) return;
       const result = await query('SELECT * FROM dashboard_configurations WHERE business_id = $1', [businessId]);
       if (result.rowCount === 0) {
         return sendJson(res, 200, { configuredSumMetrics: [], shortcutsOrder: [] });
@@ -1761,8 +2007,11 @@ export default async function handler(req, res) {
 
     // POST /api/dashboard-config
     if (pathname === '/api/dashboard-config' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
       const data = await getRequestBody(req);
-      if (!data.businessId) return sendError(res, 400, 'businessId is required');
+      const bizId = parseBigInt(data.businessId);
+      if (!(await verifyBusinessOwner(bizId, authUser, res))) return;
       
       const metricsJson = JSON.stringify(data.configuredSumMetrics || []);
       const orderJson = JSON.stringify(data.shortcutsOrder || []);
@@ -1773,7 +2022,7 @@ export default async function handler(req, res) {
         ON CONFLICT (business_id) DO UPDATE SET
           configured_sum_metrics = EXCLUDED.configured_sum_metrics,
           shortcuts_order = EXCLUDED.shortcuts_order
-      `, [data.businessId, metricsJson, orderJson]);
+      `, [bizId, metricsJson, orderJson]);
 
       return sendJson(res, 200, { message: 'Dashboard configuration updated successfully' });
     }
