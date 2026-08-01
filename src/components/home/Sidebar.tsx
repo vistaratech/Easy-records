@@ -1226,7 +1226,7 @@ export const Sidebar = memo(function Sidebar({
               <span className="sidebar-profile-name">{user?.name || user?.email || 'User'}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '1px' }}>
                 <span className="sidebar-profile-role">
-                  {user?.role === 'superadmin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin' : user?.role === 'sheet_admin' ? 'Staff' : 'User'}
+                  {user?.role === 'superadmin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin' : user?.role === 'sheet_admin' ? 'Business User' : 'User'}
                 </span>
                 <span
                   style={{
