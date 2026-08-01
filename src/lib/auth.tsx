@@ -41,6 +41,8 @@ function loadSession(): { token: string | null; user: User | null } {
   return { token: null, user: null };
 }
 
+import { queryClient } from './queryClient';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session] = useState(loadSession);
   const [token, setToken] = useState<string | null>(session.token);
@@ -48,7 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(!!session.token);
 
   const login = useCallback((newToken: string, newUser: User) => {
-    // Store in sessionStorage only
+    // Instantly wipe all stale query cache from memory for previous user
+    try { queryClient.clear(); } catch (_) {}
     sessionStorage.setItem(TOKEN_KEY, newToken);
     sessionStorage.setItem(USER_KEY, JSON.stringify(newUser));
     setToken(newToken);
@@ -56,6 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Instantly wipe all stale query cache from memory on logout
+    try { queryClient.clear(); } catch (_) {}
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
     setToken(null);

@@ -46,15 +46,7 @@ function GlobalSystemErrorListenerComponent() {
   return null;
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,     // 5 min — cached data used on revisit without refetch
-      refetchOnWindowFocus: false,   // don't refetch just because user switched tabs
-      retry: 1,                      // fail faster (default is 3)
-    },
-  },
-});
+import { queryClient } from './lib/queryClient';
 
 function PrivateRoute({ children, fallback = "/login" }: { children: React.ReactNode, fallback?: string }) {
   const { token, isLoading } = useAuth();
