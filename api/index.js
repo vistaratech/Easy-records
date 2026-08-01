@@ -922,16 +922,30 @@ export default async function handler(req, res) {
 
     // ─── ACTIVITY LOGS ───────────────────────────────────────────────────────
 
-    // GET /api/activity
+    // GET /api/activity (Secured: Users see strictly THEIR OWN activity logs; Admins see system-wide when ?all=true)
     if (pathname === '/api/activity' && method === 'GET') {
+      const authUser = getAuthUser(req);
       const registerId = url.searchParams.get('registerId');
       const entryId = url.searchParams.get('entryId');
+      const fetchAll = url.searchParams.get('all') === 'true';
       const limitVal = parseInt(url.searchParams.get('limit') || '200', 10);
       const offsetVal = parseInt(url.searchParams.get('offset') || '0', 10);
 
       let queryText = 'SELECT * FROM activity_logs';
       const params = [];
       const conditions = [];
+
+      if (!authUser) {
+        return sendJson(res, 200, { activities: [] });
+      }
+
+      const isAdmin = authUser.role === 'admin' || authUser.role === 'superadmin';
+      if (!isAdmin || !fetchAll) {
+        // Enforce strict user data isolation: users only see their own logs
+        params.push(authUser.id);
+        params.push(authUser.name || '');
+        conditions.push(`(user_id = $1 OR LOWER(user_name) = LOWER($2))`);
+      }
 
       if (registerId) {
         params.push(String(registerId));
