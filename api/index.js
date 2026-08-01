@@ -606,16 +606,11 @@ export default async function handler(req, res) {
         // Admin monitoring console sees ALL businesses when ?all=true
         result = await query('SELECT * FROM businesses ORDER BY name ASC, id ASC');
       } else if (authUser) {
-        // Returns all businesses owned by user ID or matching owner email address
-        result = await query(`
-          SELECT DISTINCT b.* FROM businesses b
-          LEFT JOIN users u ON u.id = b.owner_id
-          LEFT JOIN registers r ON r.business_id = b.id
-          WHERE b.owner_id = $1 
-             OR LOWER(u.email) = LOWER($2)
-             OR LOWER(r.shared_with::text) LIKE LOWER($3)
-          ORDER BY b.name ASC, b.id ASC
-        `, [authUser.id, authUser.email || '', `%${authUser.email || ''}%`]);
+        // SECURITY: strict — only businesses directly owned by this user's ID
+        result = await query(
+          'SELECT * FROM businesses WHERE owner_id = $1 ORDER BY name ASC, id ASC',
+          [authUser.id]
+        );
       } else {
         // No auth — return empty
         return sendJson(res, 200, []);
@@ -640,7 +635,13 @@ export default async function handler(req, res) {
 
     // GET /api/folders
     if (pathname === '/api/folders' && method === 'GET') {
+      const authUser = getAuthUser(req);
       const businessId = parseBigInt(url.searchParams.get('businessId'));
+      // SECURITY: verify this business belongs to the authenticated user
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const bizCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+        if (bizCheck.rowCount === 0) return sendJson(res, 200, []);
+      }
       const result = await query('SELECT * FROM folders WHERE business_id = $1 ORDER BY name ASC', [businessId]);
       return sendJson(res, 200, result.rows.map(r => ({
         id: Number(r.id),
@@ -652,7 +653,13 @@ export default async function handler(req, res) {
 
     // POST /api/folders
     if (pathname === '/api/folders' && method === 'POST') {
+      const authUser = getAuthUser(req);
       const { businessId, name } = await getRequestBody(req);
+      // SECURITY: verify ownership
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const bizCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+        if (bizCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       const id = Date.now();
       await query('INSERT INTO folders (id, business_id, name, created_at) VALUES ($1, $2, $3, NOW())', [id, businessId, name]);
       return sendJson(res, 201, { id, businessId, name });
@@ -661,7 +668,17 @@ export default async function handler(req, res) {
     // RENAME / DELETE folders
     const folderMatch = pathname.match(/^\/api\/folders\/(\d+)$/);
     if (folderMatch) {
+      const authUser = getAuthUser(req);
       const folderId = parseBigInt(folderMatch[1]);
+      // SECURITY: verify folder's business belongs to caller
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const folderCheck = await query(`
+          SELECT f.id FROM folders f
+          JOIN businesses b ON b.id = f.business_id
+          WHERE f.id = $1 AND b.owner_id = $2
+        `, [folderId, authUser.id]);
+        if (folderCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       if (method === 'PUT') {
         const { name } = await getRequestBody(req);
         await query('UPDATE folders SET name = $1 WHERE id = $2', [name, folderId]);
@@ -678,14 +695,26 @@ export default async function handler(req, res) {
 
     // GET /api/registers
     if (pathname === '/api/registers' && method === 'GET') {
+      const authUser = getAuthUser(req);
       const businessId = parseBigInt(url.searchParams.get('businessId'));
+      // SECURITY: verify business ownership before returning registers
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const bizCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+        if (bizCheck.rowCount === 0) return sendJson(res, 200, []);
+      }
       const result = await query('SELECT * FROM registers WHERE business_id = $1 AND deleted_at IS NULL ORDER BY name ASC', [businessId]);
       return sendJson(res, 200, result.rows.map(formatRegister));
     }
 
     // GET /api/registers/deleted
     if (pathname === '/api/registers/deleted' && method === 'GET') {
+      const authUser = getAuthUser(req);
       const businessId = parseBigInt(url.searchParams.get('businessId'));
+      // SECURITY: verify business ownership
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const bizCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+        if (bizCheck.rowCount === 0) return sendJson(res, 200, []);
+      }
       const result = await query('SELECT * FROM registers WHERE business_id = $1 AND deleted_at IS NOT NULL ORDER BY name ASC', [businessId]);
       return sendJson(res, 200, result.rows.map(formatRegister));
     }
@@ -740,7 +769,17 @@ export default async function handler(req, res) {
     // POST /api/registers/:id/restore
     const regRestoreMatch = pathname.match(/^\/api\/registers\/(\d+)\/restore$/);
     if (regRestoreMatch && method === 'POST') {
+      const authUser = getAuthUser(req);
       const regId = parseBigInt(regRestoreMatch[1]);
+      // SECURITY: verify register belongs to caller's business
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const ownerCheck = await query(`
+          SELECT r.id FROM registers r
+          JOIN businesses b ON b.id = r.business_id
+          WHERE r.id = $1 AND b.owner_id = $2
+        `, [regId, authUser.id]);
+        if (ownerCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('UPDATE registers SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [regId]);
       return sendJson(res, 200, { message: 'Register restored' });
     }
@@ -748,7 +787,17 @@ export default async function handler(req, res) {
     // DELETE /api/registers/:id/hard
     const regHardMatch = pathname.match(/^\/api\/registers\/(\d+)\/hard$/);
     if (regHardMatch && method === 'DELETE') {
+      const authUser = getAuthUser(req);
       const regId = parseBigInt(regHardMatch[1]);
+      // SECURITY: verify ownership before hard-delete
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const ownerCheck = await query(`
+          SELECT r.id FROM registers r
+          JOIN businesses b ON b.id = r.business_id
+          WHERE r.id = $1 AND b.owner_id = $2
+        `, [regId, authUser.id]);
+        if (ownerCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+      }
       await query('DELETE FROM registers WHERE id = $1', [regId]);
       return sendJson(res, 200, { message: 'Register permanently deleted' });
     }
@@ -756,11 +805,21 @@ export default async function handler(req, res) {
     // GET, PUT, DELETE for individual registers
     const regMatch = pathname.match(/^\/api\/registers\/(\d+)$/);
     if (regMatch) {
+      const authUser = getAuthUser(req);
       const regId = parseBigInt(regMatch[1]);
 
       if (method === 'GET') {
         const regRes = await query('SELECT * FROM registers WHERE id = $1', [regId]);
         if (regRes.rowCount === 0) return sendError(res, 404, 'Register not found');
+
+        // SECURITY: verify register belongs to caller's business
+        if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+          const ownerCheck = await query(
+            'SELECT id FROM businesses WHERE id = $1 AND owner_id = $2',
+            [regRes.rows[0].business_id, authUser.id]
+          );
+          if (ownerCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+        }
         
         const entriesRes = await query('SELECT * FROM entries WHERE register_id = $1 ORDER BY row_number ASC', [regId]);
         
@@ -780,6 +839,16 @@ export default async function handler(req, res) {
 
       if (method === 'PUT') {
         const data = await getRequestBody(req);
+        // SECURITY: verify ownership before updating
+        if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+          const ownerCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [data.businessId || 0, authUser.id]);
+          // Also verify via register's own business_id
+          const regOwnerCheck = await query(
+            'SELECT r.id FROM registers r JOIN businesses b ON b.id = r.business_id WHERE r.id = $1 AND b.owner_id = $2',
+            [regId, authUser.id]
+          );
+          if (regOwnerCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+        }
         await query(`
           UPDATE registers SET 
             name = $1, folder_id = $2, icon = $3, icon_color = $4, category = $5, 
@@ -850,6 +919,14 @@ export default async function handler(req, res) {
       }
 
       if (method === 'DELETE') {
+        // SECURITY: verify ownership before soft-deleting
+        if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+          const ownerCheck = await query(
+            'SELECT r.id FROM registers r JOIN businesses b ON b.id = r.business_id WHERE r.id = $1 AND b.owner_id = $2',
+            [regId, authUser.id]
+          );
+          if (ownerCheck.rowCount === 0) return sendError(res, 403, 'Forbidden');
+        }
         const { deletedBy, deletedByEmail, deletedById } = await getRequestBody(req);
         await query(`
           UPDATE registers SET 
@@ -922,12 +999,11 @@ export default async function handler(req, res) {
 
     // ─── ACTIVITY LOGS ───────────────────────────────────────────────────────
 
-    // GET /api/activity (Secured: Users see strictly THEIR OWN activity logs; Admins see system-wide when ?all=true)
+    // GET /api/activity
     if (pathname === '/api/activity' && method === 'GET') {
       const authUser = getAuthUser(req);
       const registerId = url.searchParams.get('registerId');
       const entryId = url.searchParams.get('entryId');
-      const fetchAll = url.searchParams.get('all') === 'true';
       const limitVal = parseInt(url.searchParams.get('limit') || '200', 10);
       const offsetVal = parseInt(url.searchParams.get('offset') || '0', 10);
 
@@ -935,16 +1011,11 @@ export default async function handler(req, res) {
       const params = [];
       const conditions = [];
 
-      if (!authUser) {
-        return sendJson(res, 200, { activities: [] });
-      }
-
-      const isAdmin = authUser.role === 'admin' || authUser.role === 'superadmin';
-      if (!isAdmin || !fetchAll) {
-        // Enforce strict user data isolation: users only see their own logs
-        params.push(authUser.id);
-        params.push(authUser.name || '');
-        conditions.push(`(user_id = $1 OR LOWER(user_name) = LOWER($2))`);
+      // SECURITY: non-admin callers always scoped to their own user_id
+      const isAdmin = authUser && (authUser.role === 'admin' || authUser.role === 'superadmin');
+      if (!isAdmin && authUser) {
+        params.push(String(authUser.id));
+        conditions.push(`user_id = $${params.length}`);
       }
 
       if (registerId) {
