@@ -1195,8 +1195,14 @@ export default async function handler(req, res) {
 
     // GET /api/recycle-bin
     if (pathname === '/api/recycle-bin' && method === 'GET') {
+      const authUser = getAuthUser(req);
       const businessId = parseBigInt(url.searchParams.get('businessId'));
       if (!businessId) return sendError(res, 400, 'businessId is required');
+      // SECURITY: verify business belongs to authenticated user
+      if (authUser && authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+        const bizCheck = await query('SELECT id FROM businesses WHERE id = $1 AND owner_id = $2', [businessId, authUser.id]);
+        if (bizCheck.rowCount === 0) return sendJson(res, 200, { deletedItems: [] });
+      }
       const result = await query('SELECT deleted_items FROM registers WHERE business_id = $1', [businessId]);
       const allItems = [];
       for (const row of result.rows) {

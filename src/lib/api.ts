@@ -2728,14 +2728,16 @@ export async function logAction(
 }
 
 export async function listHistory(businessId: number): Promise<HistoryEntry[]> {
-  const res = await fetch(apiUrl('/api/activity'));
+  // SECURITY: must send auth token so backend scopes logs to current user only
+  const res = await fetch(apiUrl('/api/activity'), { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error('Failed to fetch activity logs');
   const data = await res.json();
   return data.activities;
 }
 
 export async function listRowHistory(registerId: number, entryId: number): Promise<HistoryEntry[]> {
-  const res = await fetch(apiUrl(`/api/activity?registerId=${registerId}&entryId=${entryId}`));
+  // SECURITY: must send auth token so backend scopes logs to current user only
+  const res = await fetch(apiUrl(`/api/activity?registerId=${registerId}&entryId=${entryId}`), { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error('Failed to fetch row history');
   const data = await res.json();
   return data.activities;
@@ -2747,7 +2749,8 @@ export async function listRowHistory(registerId: number, entryId: number): Promi
  * Get all deleted items (rows + columns) across all registers for a business.
  */
 export async function getAllDeletedItems(businessId: number): Promise<DeletedItem[]> {
-  const res = await fetch(apiUrl(`/api/recycle-bin?businessId=${businessId}`));
+  // SECURITY: must send auth token so backend scopes results to current user only
+  const res = await fetch(apiUrl(`/api/recycle-bin?businessId=${businessId}`), { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error('Failed to fetch deleted items');
   const data = await res.json();
   return data.deletedItems;
