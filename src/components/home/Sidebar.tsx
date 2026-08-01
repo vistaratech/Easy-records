@@ -122,8 +122,17 @@ export const Sidebar = memo(function Sidebar({
 
   const { data: folders = [] } = useQuery({
     queryKey: ['folders', businessId],
-    queryFn: () => listFolders(businessId!),
-    enabled: !!businessId,
+    queryFn: async () => {
+      if (!businesses || businesses.length === 0) return [];
+      const allFolders = await Promise.all(
+        businesses.map(b => listFolders(b.id).catch(() => []))
+      );
+      const flat = allFolders.flat();
+      const map = new Map<number, import('../../lib/api').Folder>();
+      flat.forEach(f => map.set(f.id, f));
+      return Array.from(map.values());
+    },
+    enabled: !!businesses && businesses.length > 0,
   });
 
   const sortedFolders = useMemo(() => {
