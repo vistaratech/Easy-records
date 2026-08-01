@@ -10816,6 +10816,49 @@ tr:hover .admin-table-sticky-col {
   }
 }
 
+/* ── Dynamic "Alive" Application FX System ── */
+
+/* Active button press & spring feedback */
+button:active, .interactive-btn:active, .category-card:active, .register-card:active {
+  transform: scale(0.97) !important;
+  transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+/* Glowing Pulsing Online Dot */
+@keyframes alivePulseDot {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.alive-pulse-dot {
+  width: 9px;
+  height: 9px;
+  background-color: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+  animation: alivePulseDot 2s infinite ease-in-out;
+}
+
+/* Smooth Fade Slide Entrance for Cards & Page Elements */
+@keyframes aliveFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.alive-fade-up {
+  animation: aliveFadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Vibrant Hover Cards with Floating Elevation */
+.alive-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.alive-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 28px -6px rgba(0, 45, 93, 0.14), 0 4px 12px rgba(0,0,0,0.04) !important;
+}
+
 
 
 
