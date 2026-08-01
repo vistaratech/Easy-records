@@ -30,7 +30,7 @@ export default function LoginPage() {
     try {
       const result = await firebaseGoogleLogin();
       login(result.token, result.user);
-      toast.success(`Welcome, ${result.user.name || 'User'}! 🎉`);
+      toast.success(`Welcome, ${result.user.name || 'User'}!`);
     } catch (err: any) {
       if (err.isConfigNotFound) {
         const userEmail = window.prompt('Enter your Gmail address to sign in with Google instantly:');
@@ -38,7 +38,7 @@ export default function LoginPage() {
           try {
             const result = await firebaseDirectGoogleLogin(userEmail.trim());
             login(result.token, result.user);
-            toast.success(`Welcome, ${result.user.name || 'User'}! 🎉`);
+            toast.success(`Welcome, ${result.user.name || 'User'}!`);
             return;
           } catch (directErr: any) {
             setError(directErr.message);
@@ -89,7 +89,7 @@ export default function LoginPage() {
       setLoading(true);
       try {
         const result = await firebaseSignup(name, email, password, phone);
-        toast.success('🎉 Account created successfully with a 1-Month Free Trial!');
+        toast.success('Account created successfully with a 1-Month Free Trial!');
         login(result.token, result.user);
       } catch (err: any) {
         setError(err.message);

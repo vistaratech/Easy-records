@@ -1,4 +1,4 @@
-import { Plus, Upload, FileText, FolderOpen, Search, X } from 'lucide-react';
+import { Plus, Upload, FileText, FolderOpen, Search, X, Sun, SunMedium, Moon, Sparkles } from 'lucide-react';
 import { startTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { RegisterSummary } from '../../lib/api';
@@ -124,12 +124,28 @@ export function DashboardContent({ filtered, excelMutation, handleFileUpload, on
     );
   }
 
-  // Dynamic time of day greeting
-  const getGreeting = () => {
+  // Dynamic time of day greeting with vector Lucide Icons
+  const renderGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return '🌅 Good Morning';
-    if (hour < 17) return '☀️ Good Afternoon';
-    return '🌙 Good Evening';
+    if (hour < 12) {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Sun size={15} color="#f59e0b" /> Good Morning
+        </span>
+      );
+    }
+    if (hour < 17) {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <SunMedium size={15} color="#fbbf24" /> Good Afternoon
+        </span>
+      );
+    }
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <Moon size={15} color="#a78bfa" /> Good Evening
+      </span>
+    );
   };
 
   return (
@@ -153,11 +169,12 @@ export function DashboardContent({ filtered, excelMutation, handleFileUpload, on
         }}>
           <div style={{ position: 'relative', zIndex: 2 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{getGreeting()}</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{renderGreeting()}</span>
               <span className="alive-pulse-dot" title="Workspace connected & active" />
             </div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.02em' }}>
-              Welcome back, {user?.name || 'Workspace Admin'}! ✨
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Welcome back, {user?.name || 'Workspace Admin'}!</span>
+              <Sparkles size={20} color="#fbbf24" />
             </h1>
             <p style={{ margin: '4px 0 0 0', fontSize: '13px', opacity: 0.85 }}>
               Manage your business registers, log quick entries, or export reports in one click.
