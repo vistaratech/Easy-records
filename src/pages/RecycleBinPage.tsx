@@ -29,17 +29,11 @@ export default function RecycleBinPage({ isAdminPanel = false }: RecycleBinPageP
     return isAdminPanel || (user as any)?.role === 'admin' || (user as any)?.role === 'superadmin' || (user as any)?.permissions?.isAdmin === true;
   }, [isAdminPanel, user]);
 
-  const [activeTab, setActiveTab] = useState<TabType>(isPageAdmin ? 'registers' : 'items');
+  const [activeTab, setActiveTab] = useState<TabType>('registers');
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!isPageAdmin) {
-      setActiveTab('items');
-    }
-  }, [isPageAdmin]);
 
   const { data: businesses } = useQuery({ queryKey: ['businesses'], queryFn: listBusinesses });
   const businessId = businesses?.[0]?.id;
@@ -60,29 +54,13 @@ export default function RecycleBinPage({ isAdminPanel = false }: RecycleBinPageP
 
   const filteredRegisters = useMemo(() => {
     if (!deletedRegisters) return [];
-    if (isPageAdmin) return deletedRegisters;
-
-    // Filter to only show registers deleted by current user
-    return deletedRegisters.filter(reg => {
-      if (reg.deletedById && user?.id && String(reg.deletedById) === String(user.id)) return true;
-      if (reg.deletedByEmail && user?.email && reg.deletedByEmail.toLowerCase() === user.email.toLowerCase()) return true;
-      if (!reg.deletedById && !reg.deletedByEmail && reg.deletedBy && user?.name && reg.deletedBy.toLowerCase() === user.name.toLowerCase()) return true;
-      return false;
-    });
-  }, [deletedRegisters, isPageAdmin, user]);
+    return deletedRegisters;
+  }, [deletedRegisters]);
 
   const baseFilteredItems = useMemo(() => {
     if (!deletedItems) return [];
-    if (isPageAdmin) return deletedItems;
-
-    // Filter to only show items deleted by current user
-    return deletedItems.filter(i => {
-      if (i.deletedById && user?.id && String(i.deletedById) === String(user.id)) return true;
-      if (i.deletedByEmail && user?.email && i.deletedByEmail.toLowerCase() === user.email.toLowerCase()) return true;
-      if (!i.deletedById && !i.deletedByEmail && i.deletedBy && user?.name && i.deletedBy.toLowerCase() === user.name.toLowerCase()) return true;
-      return false;
-    });
-  }, [deletedItems, isPageAdmin, user]);
+    return deletedItems;
+  }, [deletedItems]);
 
   const rowCount = baseFilteredItems.filter(i => i.type === 'row').length;
   const colCount = baseFilteredItems.filter(i => i.type === 'column').length;
@@ -234,30 +212,29 @@ export default function RecycleBinPage({ isAdminPanel = false }: RecycleBinPageP
       </div>
 
       {/* Tabs */}
-      {isPageAdmin && (
-        <div className="rbin-tabs">
-          <button
-            className={`rbin-tab${activeTab === 'registers' ? ' active' : ''}`}
-            onClick={() => setActiveTab('registers')}
-          >
-            <FileText size={14} />
-            Registers
-            {filteredRegisters && filteredRegisters.length > 0 && (
-              <span className="rbin-badge">{filteredRegisters.length}</span>
-            )}
-          </button>
-          <button
-            className={`rbin-tab${activeTab === 'items' ? ' active' : ''}`}
-            onClick={() => setActiveTab('items')}
-          >
-            <Trash2 size={14} />
-            Rows & Columns
-            {baseFilteredItems && baseFilteredItems.length > 0 && (
-              <span className="rbin-badge">{baseFilteredItems.length}</span>
-            )}
-          </button>
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="rbin-tabs">
+        <button
+          className={`rbin-tab${activeTab === 'registers' ? ' active' : ''}`}
+          onClick={() => setActiveTab('registers')}
+        >
+          <FileText size={14} />
+          Deleted Registers
+          {filteredRegisters && filteredRegisters.length > 0 && (
+            <span className="rbin-badge">{filteredRegisters.length}</span>
+          )}
+        </button>
+        <button
+          className={`rbin-tab${activeTab === 'items' ? ' active' : ''}`}
+          onClick={() => setActiveTab('items')}
+        >
+          <Trash2 size={14} />
+          Rows & Columns
+          {baseFilteredItems && baseFilteredItems.length > 0 && (
+            <span className="rbin-badge">{baseFilteredItems.length}</span>
+          )}
+        </button>
+      </div>
 
       {/* Content */}
       <div className="rbin-body">
