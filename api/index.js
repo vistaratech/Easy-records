@@ -2146,9 +2146,7 @@ Guidelines:
           for (const model of modelsToTry) {
             try {
               const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeApiKey}`;
-              const fetchFn = typeof fetch !== 'undefined' ? fetch : (globalThis.fetch || null);
-              if (!fetchFn) break;
-              const response = await fetchFn(geminiUrl, {
+              const response = await fetch(geminiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
