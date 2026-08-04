@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Calendar, Clock, Sparkles, User, Mail, Phone, Award, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Calendar, Clock, Sparkles, User, Mail, Phone, Award, CheckCircle2, ArrowLeft, Zap } from 'lucide-react';
+import { PaymentModal } from '../components/payment/PaymentModal';
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   
   const getRoleLabel = (role?: string) => {
     if (role === 'superadmin') return 'Super Admin';
@@ -126,20 +129,46 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '30px',
-            background: daysLeft <= 5 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-            border: `1px solid ${daysLeft <= 5 ? '#EF4444' : '#10B981'}`,
-            color: daysLeft <= 5 ? '#FCA5A5' : '#6EE7B7',
-            fontWeight: 700,
-            fontSize: '13.5px'
-          }}>
-            <Clock size={16} />
-            <span>{daysLeft > 0 ? `${daysLeft} Days Remaining` : 'Trial Expired'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setIsPaymentModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 18px',
+                borderRadius: '30px',
+                background: 'linear-gradient(135deg, #6366F1 0%, #3B82F6 100%)',
+                color: '#FFFFFF',
+                fontWeight: 700,
+                fontSize: '13.5px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+            >
+              <Zap size={16} fill="white" />
+              <span>Upgrade Plan (0% Fee UPI)</span>
+            </button>
+
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '30px',
+              background: daysLeft <= 5 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+              border: `1px solid ${daysLeft <= 5 ? '#EF4444' : '#10B981'}`,
+              color: daysLeft <= 5 ? '#FCA5A5' : '#6EE7B7',
+              fontWeight: 700,
+              fontSize: '13.5px'
+            }}>
+              <Clock size={16} />
+              <span>{daysLeft > 0 ? `${daysLeft} Days Remaining` : 'Trial Expired'}</span>
+            </div>
           </div>
         </div>
 
@@ -245,6 +274,14 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Free UPI Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        userEmail={user?.email}
+        userName={user?.name || user?.email}
+      />
     </div>
   );
 }

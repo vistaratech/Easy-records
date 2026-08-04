@@ -2027,6 +2027,160 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { message: 'Dashboard configuration updated successfully' });
     }
 
+    // ─── FREE UPI PAYMENTS API ────────────────────────────────────────────────
+
+    // POST /api/submit-payment (User submits UTR reference number)
+    if (pathname === '/api/submit-payment' && method === 'POST') {
+      const data = await getRequestBody(req);
+      const utr = data.utrNumber ? String(data.utrNumber).trim() : '';
+      if (!utr || !/^\d{12}$/.test(utr)) {
+        return sendError(res, 400, 'Valid 12-digit UTR reference number is required');
+      }
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS user_payments (
+          id SERIAL PRIMARY KEY,
+          user_email TEXT NOT NULL,
+          user_name TEXT,
+          plan_id TEXT NOT NULL,
+          plan_name TEXT NOT NULL,
+          amount NUMERIC NOT NULL,
+          utr_number TEXT NOT NULL UNIQUE,
+          status TEXT DEFAULT 'pending',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      try {
+        const result = await query(`
+          INSERT INTO user_payments (user_email, user_name, plan_id, plan_name, amount, utr_number)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+        `, [
+          data.userEmail || 'user@easyrecords.app',
+          data.userName || 'User',
+          data.planId || 'pro',
+          data.planName || 'Pro Plan',
+          data.amount || 199,
+          utr
+        ]);
+
+        return sendJson(res, 200, { success: true, payment: result.rows[0] });
+      } catch (err) {
+        if (err.code === '23505') {
+          return sendError(res, 400, 'This UTR Reference number has already been submitted');
+        }
+        throw err;
+      }
+    }
+
+    // GET /api/admin/payments (Admin views pending payments)
+    if (pathname === '/api/admin/payments' && method === 'GET') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      
+      await query(`
+        CREATE TABLE IF NOT EXISTS user_payments (
+          id SERIAL PRIMARY KEY,
+          user_email TEXT NOT NULL,
+          user_name TEXT,
+          plan_id TEXT NOT NULL,
+          plan_name TEXT NOT NULL,
+          amount NUMERIC NOT NULL,
+          utr_number TEXT NOT NULL UNIQUE,
+          status TEXT DEFAULT 'pending',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      const result = await query('SELECT * FROM user_payments ORDER BY created_at DESC LIMIT 100');
+      return sendJson(res, 200, { payments: result.rows });
+    }
+
+    // POST /api/admin/verify-payment (Admin approves or rejects payment)
+    if (pathname === '/api/admin/verify-payment' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+      
+      const data = await getRequestBody(req);
+      const { paymentId, status } = data;
+      if (!paymentId || !['approved', 'rejected'].includes(status)) {
+        return sendError(res, 400, 'Invalid parameters');
+      }
+
+      await query('UPDATE user_payments SET status = $1, updated_at = NOW() WHERE id = $2', [status, paymentId]);
+      return sendJson(res, 200, { success: true, message: `Payment status updated to ${status}` });
+    }
+
+    // POST /api/chat (AI Data Assistant Chatbot endpoint)
+    if (pathname === '/api/chat' && method === 'POST') {
+      const authUser = requireAuth(req, res);
+      if (!authUser) return;
+
+      const data = await getRequestBody(req);
+      const { prompt, appDataContext, apiKey: userApiKey } = data;
+
+      if (!prompt) {
+        return sendError(res, 400, 'Prompt is required');
+      }
+
+      const activeApiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+      if (activeApiKey) {
+        try {
+          const systemInstruction = `You are "EasyRecords AI Assistant", an expert AI data analyst integrated inside the EasyRecords web application.
+Your goal is to analyze the user's app data (folders, registers, record entries, numerical columns, totals, categories) and answer questions with high accuracy.
+
+Guidelines:
+1. Language: Answer in the same language as the user's query (Tamil, Tanglish, or English).
+2. Data Context: Rely on the provided JSON data context representing the user's active registers and entries.
+3. Clarity: Provide concise, clear responses. Use bullet points, bold numbers, and markdown formatting where helpful.
+4. Accuracy: Do exact numerical additions or summaries based on the given app data when asked about totals, counts, or specific registers.
+5. Helpful suggestions: At the end, suggest 1 or 2 relevant follow-up questions if appropriate.`;
+
+          const fullPrompt = `${systemInstruction}\n\n--- LIVE APP DATA CONTEXT ---\n${JSON.stringify(appDataContext || {}, null, 2)}\n\n--- USER QUERY ---\n${prompt}`;
+
+          const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+          for (const model of modelsToTry) {
+            try {
+              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeApiKey}`;
+              const response = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: fullPrompt }] }]
+                })
+              });
+
+              if (response.ok) {
+                const geminiData = await response.json();
+                const textResponse = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (textResponse) {
+                  return sendJson(res, 200, { response: textResponse, source: 'gemini' });
+                }
+              } else {
+                const errText = await response.text().catch(() => '');
+                console.error(`[AI Chat] Gemini API model ${model} HTTP ${response.status}:`, errText);
+              }
+            } catch (err) {
+              console.error(`[AI Chat] Error with model ${model}:`, err);
+            }
+          }
+        } catch (geminiErr) {
+          console.error('[AI Chat] Gemini API outer error:', geminiErr);
+        }
+      }
+
+      // Fallback response indication if no key or API failed
+      return sendJson(res, 200, {
+        response: null,
+        source: 'local',
+        message: 'No active API Key or API error. Local engine will process context.'
+      });
+    }
+
     // If no route matches, return 404
     return sendError(res, 404, `Route ${pathname} not found`);
 

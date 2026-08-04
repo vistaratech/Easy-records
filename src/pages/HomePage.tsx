@@ -17,6 +17,7 @@ import { useNotifications } from '../lib/NotificationContext';
 import { useAuth } from '../lib/auth';
 import { RequestModal } from '../components/register/modals/RequestModal';
 import OnboardingWizard, { ONBOARDING_KEY_PREFIX } from '../components/common/OnboardingWizard';
+import { AIChatbotModal } from '../components/chat/AIChatbotModal';
 
 // Lazy-load heavy page components — only downloaded when navigated to
 const RegisterPage = lazy(() => import('./RegisterPage'));
@@ -674,6 +675,9 @@ export default function HomePage() {
         onClose={handleCloseOnboarding}
         userName={user?.name || 'User'}
       />
+
+      {/* AI Data Assistant Chatbot Modal */}
+      <AIChatbotModal businessId={businessId} />
     </div>
   );
 }
